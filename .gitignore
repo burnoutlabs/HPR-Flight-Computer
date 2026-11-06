@@ -1,0 +1,4 @@
+# PlatformIO build output and downloaded libraries
+.pio/
+# Left in src/ if PlatformIO's .ino-to-.cpp conversion is interrupted
+*.ino.cpp

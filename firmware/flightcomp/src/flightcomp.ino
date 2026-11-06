@@ -187,6 +187,14 @@ _bus *activeBus;
 inline void checkEvents(void) __attribute__((always_inline));
 inline void getDCM2DRotn(void) __attribute__((always_inline));
 inline void getQuatRotn(void) __attribute__((always_inline));
+// Rotation.ino defines getQuatRotn() with double arguments on Teensy 4.x and float
+// arguments elsewhere. Declaring the matching one here keeps PlatformIO's .ino
+// prototype generator, which does not evaluate #if, from declaring both.
+#if defined(__IMXRT1062__)
+void getQuatRotn(double dx, double dy, double dz, double gyroGain);
+#else
+void getQuatRotn(float dx, float dy, float dz, float gyroGain);
+#endif
 inline void radioSendPacket(void) __attribute__((always_inline));
 inline void writeSDflightData(void) __attribute__((always_inline));
 inline void writeFloatData(void) __attribute__((always_inline));
