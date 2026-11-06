@@ -1,12 +1,15 @@
 /**
- * @file Sensor_Drivers.ino
- * @brief Functions and routines for managing sensor drivers in Teensy-based projects.
+ * @file Device_Drivers.ino
+ * @brief Optimized drivers for the specific sensors supported by the flight computer.
  *
  * @details
- * This file contains various functions for starting and retrieving data from different sensors,
+ * This file contains the functions for starting and retrieving data from the supported sensors,
  * including accelerometers, gyroscopes, magnetometers, high-G accelerometers, and barometric sensors.
- * It supports multiple sensor models, offering generic functions for starting and retrieving data,
- * as well as sensor-specific routines for advanced operations.
+ * The flight code does not call these drivers directly: setPolyMorphs() (Device_Mgmt.ino) points the
+ * generic sensor function pointers declared in declarations.h (beginAccel(), getAccel(), beginGyro(),
+ * getGyro(), beginMag(), getMag(), beginHighG(), getHighG(), beginBaro(), getBaro()) at the driver
+ * for each configured sensor. Sensors without a driver here can be used through an external library
+ * (Device_Drivers_External.ino).
  *
  * @section changelog Change Log
  * - 26 Nov 17: Version 1 created to support Adafruit 10Dof board.
@@ -24,28 +27,19 @@
  * - 16 Jun 22: Updated with streamlined bus management functions, eliminated high-G 3-axis mode due to improved I2C speed.
  * - 13 Jun 23: Updated to add LPS25H support and correct bugs in LSM6DS33 and LIS3MDL.
  * - 13 Aug 23: Added MPU6050 support, eliminated redundant routines.
+ * - 22 Oct 23: Broke out the sensor management functions to make it easier to use external libraries.
+ * - 21 Dec 23: Added MPU9250 support.
+ * - 07 May 24: Added LSM6DSOX support, fixed LIS3MDL bugs.
+ * - 11 May 25: Added LSM6DS3TR support.
  *
  * @section supported_sensors Supported Sensors
- * - Accelerometers: LSM303, LSM9DS1, LSM6DS33
- * - Gyroscopes: L3GD20H, LSM9DS1, LSM6DS33
- * - Magnetometers: LSM303, LSM9DS1, LIS3MDL
- * - High-G Accelerometers: H3LIS331DL, ADS1115 & ADXL377 Combo, ADXL377 & Teensy3.5 ADC combo
+ * - Accelerometers: LSM303, LSM9DS1, LSM6DS33, LSM6DSOX, LSM6DS3TR, MPU6050, MPU9250
+ * - Gyroscopes: L3GD20H, LSM9DS1, LSM6DS33, LSM6DSOX, LSM6DS3TR, MPU6050, MPU9250
+ * - Magnetometers: LSM303, LSM9DS1, LIS3MDL, MPU9250
+ * - High-G Accelerometers: H3LIS331DL, ADXL377 with ADS1115 ADC, ADXL377 with Teensy 3.5/4.1 ADC
  * - Barometric: BMP180, BMP280, BMP388, MPL3115A2, MS5611, MS5607, LPS25H
  *
  * @warning Some Bosch sensors, such as BMP280 and BMP388, may be sensitive to RF interference.
- *
- * @section generic_sensor_functions Generic Sensor Functions
- * - beginAccel(): Starts accelerometer.
- * - getAccel(): Gets accelerometer data.
- * - beginGyro(): Starts gyroscope.
- * - getGyro(): Gets gyroscope data.
- * - beginHighG(): Starts high-G accelerometer.
- * - getHighG(): Gets high-G accelerometer data.
- * - beginMag(): Starts magnetometer if external to IMU.
- * - resetMagGain(): Sets the magnetometer gain to 8 Gauss for the magnetic switch function.
- * - getMag(): Gets magnetometer data.
- * - beginBaro(): Starts the barometer.
- * - getBaro(): Gets the barometer data.
  *
  * @section sensor_specific_functions Sensor-Specific Functions
  * - beginLSM303_A(): Starts LSM303 accelerometer.
@@ -54,452 +48,67 @@
  * - getLSM303_M(): Gets LSM303 magnetometer data.
  *
  * - beginL3GD20H(): Starts L3GD20H gyroscope.
- * - getL3GS20H(): Gets L3GD20H gyroscope data.
+ * - getL3GD20H(): Gets L3GD20H gyroscope data.
  *
  * - beginLSM9DS1_AG(): Starts LSM9DS1 accelerometer & gyro.
  * - beginLSM9DS1_M(): Starts LSM9DS1 magnetometer.
  * - getLSM9DS1_AG(): Gets LSM9DS1 accelerometer & gyro data.
  * - getLSM9DS1_M(): Gets LSM9DS1 magnetometer data.
  *
+ * - beginLSM6DS3TR(): Starts LSM6DS3TR sensor.
+ * - getLSM6DS3TR(): Gets LSM6DS3TR accelerometer & gyro data.
+ *
  * - beginLSM6DS33(): Starts LSM6DS33 sensor.
  * - getLSM6DS33(): Gets LSM6DS33 accelerometer & gyro data.
  *
+ * - beginLSM6DSOX(): Starts LSM6DSOX sensor.
+ * - getLSM6DSOX(): Gets LSM6DSOX accelerometer & gyro data.
+ *
  * - beginMPU6050(): Starts MPU6050 sensor.
- * - getMPU6050_AG(): Gets MPU6050 accelerometer & gyro data.
+ * - getMPU6050(): Gets MPU6050 accelerometer & gyro data.
+ *
+ * - beginMPU9250_AG(): Starts MPU9250 accelerometer & gyro.
+ * - beginMPU9250_M(): Starts MPU9250 magnetometer.
+ * - getMPU9250_AG(): Gets MPU9250 accelerometer & gyro data.
+ * - getMPU9250_M(): Gets MPU9250 magnetometer data.
  *
  * - beginLIS3MDL(): Starts LIS3MDL magnetometer.
  * - getLIS3MDL(): Gets LIS3MDL magnetometer data.
+ *
+ * - beginLPS25H(): Starts LPS25H sensor.
+ * - getLPS25H(): Gets both temperature and pressure data.
+ *
+ * - beginADXL377(): Starts Teensy ADC.
+ * - getADXL377(): Gets accelerometer data from Teensy ADC.
  *
  * - beginH3LIS331DL(): Starts H3LIS331DL high-G accelerometer.
  * - getH3LIS331DL(): Gets H3LIS331DL high-G accelerometer data.
  *
  * - beginADS1115(): Starts ADS1115 ADC.
  * - getADS1115(): Gets accelerometer data from ADXL377.
- * - writeRegister(): Helper function for ADS1115.
- *
- * - beginADXL377(): Starts Teensy ADC.
- * - getADXL377(): Gets accelerometer data from Teensy ADC.
- *
- * - beginBMP180(): Starts BMP180 barometric sensor.
- * - initiateTemp(): Initiates temperature measurement.
- * - initiatePressure(): Initiates pressure measurement.
- * - getPressure(): Retrieves pressure data.
- *
- * - beginBMP280(): Starts BMP280 sensor.
- * - readBMP280coefficients(): Reads BMP280 sensor calibration data.
- * - getBMP280(): Gets BMP280 sensor data.
- *
- * - beginBMP388(): Starts BMP388 sensor.
- * - readBMP388coefficients(): Reads BMP388 sensor calibration data.
- * - getBMP388(): Gets BMP388 sensor data.
  *
  * - beginMPL3115A2(): Starts MPL3115A2 sensor.
  * - getMPL3115A2(): Reads MPL3115A2 sensor data.
  * - pressureToAltitude(): Converts pressure to altitude.
  *
+ * - beginBMP180(): Starts BMP180 barometric sensor.
+ * - getBMP180(): Gets BMP180 sensor data.
+ * - initiateTemp(): Initiates temperature measurement.
+ * - initiatePressure(): Initiates pressure measurement.
+ * - getPressure(): Retrieves pressure data.
+ *
+ * - beginBMP280(): Starts BMP280 sensor.
+ * - getBMP280(): Gets BMP280 sensor data.
+ *
+ * - beginBMP388(): Starts BMP388 sensor.
+ * - getBMP388(): Gets BMP388 sensor data.
+ *
  * - beginMS56XX(): Starts MS56XX sensor.
- * - readPromMS56XX(): Reads MS56XX calibration settings from PROM.
  * - getMS56XX(): Retrieves MS56XX sensor data.
- * - readMS56XX(): Manages I2C bus speed.
- * - CmdMS56XX(): Helper function for sending commands.
+ * - cmdMS56XX(): Helper function for sending commands.
  * - ConvertTempMS56XX(): Converts temperature.
  * - ConvertPressMS56XX(): Converts pressure.
- *
- * - beginLPS25H(): Starts LPS25H sensor.
- * - getLPS25H(): Gets both temperature and pressure data.
  */
-
-//***************************************************************************
-// Generic Sensor Begin & Read Statements
-//***************************************************************************
-/*!
- * @brief Initializes the appropriate accelerometer based on the configured sensor type.
- */
-void beginAccel()
-{
-
-  switch (sensors.accel)
-  {
-
-  case 2:
-    sensors.status_LSM9DS1 = beginLSM9DS1_AG();
-    break;
-
-  case 3:
-    sensors.status_LSM6DS33 = beginLSM6DS33();
-    break;
-
-  case 1:
-    sensors.status_LSM303 = beginLSM303_A();
-    break;
-
-  case 4:
-    sensors.status_MPU6050 = beginMPU6050();
-    break;
-  }
-} // end beginAccel
-
-/*!
- * @brief Reads data from the appropriate accelerometer based on the configured sensor type.
- */
-void getAccel()
-{
-
-  // get the sensor data
-  switch (sensors.accel)
-  {
-
-  case 2:
-    getLSM9DS1_AG();
-    break;
-
-  case 3:
-    getLSM6DS33();
-    break;
-
-  case 1:
-    getLSM303_A();
-    break;
-
-  case 4:
-    getMPU6050();
-    break;
-  }
-
-  // indicate new sample
-  accel.newSamp = true;
-
-  // remove bias
-  accel.rawX -= accel.biasX;
-  accel.rawY -= accel.biasY;
-  accel.rawZ -= accel.biasZ;
-
-  // orient sensor data
-  accel.x = *accel.ptrX * *accel.ptrXsign;
-  accel.y = *accel.ptrY * *accel.ptrYsign;
-  accel.z = *accel.ptrZ * *accel.ptrZsign;
-} // end getAccel
-
-/*!
- * @brief Initializes the appropriate magnetometer based on the configured sensor type.
- */
-void beginMag()
-{
-
-  switch (sensors.mag)
-  {
-
-  case 1:
-    beginLSM303_M();
-    break;
-
-  case 2:
-    beginLSM9DS1_M();
-    break;
-
-  case 3:
-    beginLIS3MDL();
-    break;
-
-  default:
-    break;
-  }
-} // end beginMag
-
-/*!
- * @brief Resets the gain settings for the configured magnetometer.
- */
-void resetMagGain()
-{
-
-  // The highest sensitivity produces false positives when using the magnetometer as a switch, so we need to reduce the gain
-#define LSM9DS1_ADDRESS_MAG (0x1E)
-#define LSM9DS1_REGISTER_CTRL_REG2_M (0x21)
-#define LSM303_ADDRESS_MAG (0x3C >> 1)
-#define LSM303_REGISTER_MAG_CRB_REG_M (0x01)
-#define LSM303_MAGGAIN_1_3 (0x20)
-#define LIS3MDL_ADDRESS_MAG (0x1E)
-#define LIS3MDL_REGISTER_CTRL_REG2 (0x21)
-
-  // set bus
-  activeBus = &magBus;
-
-  switch (sensors.mag)
-  {
-
-  case 3: // LIS3MDL
-
-    // Set gain to 8 Gauss
-    write8(LIS3MDL_REGISTER_CTRL_REG2, 0b00100000);
-    break;
-
-  case 2: // LSM9DS1
-
-    // Set gain to 8 Gauss
-    write8(LSM9DS1_REGISTER_CTRL_REG2_M, 0b00100000);
-    break;
-
-  case 1: // LSM303
-
-    // Set gain to 8 Gauss
-    write8(LSM303_REGISTER_MAG_CRB_REG_M, 0b11100000);
-    break;
-  }
-
-  // Set mag trigger
-  magTrigger = 3000;
-
-  // correct the bias
-  mag.biasX /= 2;
-  mag.biasY /= 2;
-  mag.biasZ /= 2;
-
-  // clear the buffer
-  getMag();
-  delay(100);
-  getMag();
-} // end resetMagGain
-
-/*!
- * @brief Reads data from the appropriate magnetometer based on the configured sensor type.
- */
-void getMag()
-{
-
-  // get the sensor data
-  switch (sensors.accel)
-  {
-
-  case 3:
-    getLIS3MDL();
-    break;
-
-  case 2:
-    getLSM9DS1_M();
-    break;
-
-  case 1:
-    getLSM303_M();
-    break;
-  }
-
-  // indicate new sample
-  mag.newSamp = true;
-
-  // remove bias
-  mag.rawX -= mag.biasX;
-  mag.rawY -= mag.biasY;
-  mag.rawZ -= mag.biasZ;
-
-  // translate sensor data
-  mag.x = *mag.ptrX * *mag.ptrXsign;
-  mag.y = *mag.ptrY * *mag.ptrYsign;
-  mag.z = *mag.ptrZ * *mag.ptrZsign;
-} // end getMag
-
-/*!
- * @brief Initializes the appropriate gyroscope based on the configured sensor type.
- */
-void beginGyro()
-{
-
-  switch (sensors.gyro)
-  {
-
-  case 1:
-    sensors.status_L3GD20H = beginL3GD20H();
-    break;
-
-  default:
-    break;
-  }
-} // end beginGyro
-
-/*!
- * @brief Reads data from the appropriate gyroscope based on the configured sensor type.
- */
-void getGyro()
-{
-
-  // get sensor data
-  switch (sensors.gyro)
-  {
-
-  case 1:
-    getL3GD20H();
-    break;
-
-  case 2:
-    break;
-
-  case 3:
-    break;
-
-  case 4:
-    break;
-  }
-
-  // indicate new sample
-  gyro.newSamp = true;
-
-  // remove bias
-  gyro.rawX -= gyro.biasX;
-  gyro.rawY -= gyro.biasY;
-  gyro.rawZ -= gyro.biasZ;
-
-  // orient sensor data
-  gyro.x = *gyro.ptrX * *gyro.ptrXsign;
-  gyro.y = *gyro.ptrY * *gyro.ptrYsign;
-  gyro.z = *gyro.ptrZ * *gyro.ptrZsign;
-} // end getGyro
-
-/*!
- * @brief Initializes the appropriate high-G accelerometer based on the configured sensor type.
- */
-void beginHighG()
-{
-
-  switch (sensors.highG)
-  {
-
-  case 0:
-    sensors.status_NoHighGAccel = true;
-    break;
-
-  case 1:
-    sensors.status_ADS1115 = beginADS1115('S');
-    break;
-
-  case 2:
-    sensors.status_H3LIS331DL = beginH3LIS331DL();
-    break;
-
-  case 3:
-    if (!startADXL377)
-    {
-      sensors.status_ADXL377 = beginADXL377();
-    }
-    break;
-  }
-} // end beginHighG
-
-/*!
- * @brief Reads data from the appropriate high-G accelerometer based on the configured sensor type.
- */
-void getHighG()
-{
-
-  switch (sensors.highG)
-  {
-
-  // get sensor data
-  case 0:
-    break;
-
-  case 1:
-    getADS1115();
-    break;
-
-  case 2:
-    getH3LIS331DL();
-    break;
-
-  case 3:
-    getADXL377();
-    break;
-  }
-
-  // indicate new sample
-  highG.newSamp = true;
-
-  // remove bias
-  highG.rawX -= highG.biasX;
-  highG.rawY -= highG.biasY;
-  highG.rawZ -= highG.biasZ;
-
-  // orient sensor data
-  highG.x = *highG.ptrX * *highG.ptrXsign;
-  highG.y = *highG.ptrY * *highG.ptrYsign;
-  highG.z = *highG.ptrZ * *highG.ptrZsign;
-} // end getHighG
-
-/*!
- * @brief Initializes the appropriate barometer based on the configured sensor type.
- */
-void beginBaro()
-{
-
-  switch (sensors.baro)
-  {
-
-  case 1:
-    sensors.status_BMP180 = beginBMP180();
-    break;
-
-  case 2:
-    sensors.status_MPL3115A2 = beginMPL3115A2();
-    break;
-
-  case 3:
-    sensors.status_BMP280 = beginBMP280();
-    break;
-
-  case 4:
-    sensors.status_BMP388 = beginBMP388();
-    break;
-
-  case 5:
-    sensors.status_MS5611 = beginMS56XX();
-    break;
-
-  case 6:
-    sensors.status_MS5607 = beginMS56XX();
-    break;
-
-  case 7:
-    sensors.status_LPS25H = beginLPS25H();
-    break;
-  }
-} // end beginBaro
-
-/*!
- * @brief Reads data from the appropriate barometer based on the configured sensor type.
- */
-void getBaro()
-{
-
-  switch (sensors.baro)
-  {
-
-  case 1:
-    getBMP180();
-    break;
-
-  case 2:
-    getMPL3115A2();
-    break;
-
-  case 3:
-    getBMP280();
-    break;
-
-  case 4:
-    getBMP388();
-    break;
-
-  case 5:
-    getMS56XX();
-    break;
-
-  case 6:
-    getMS56XX();
-    break;
-
-  case 7:
-    getLPS25H();
-    break;
-  }
-}
 
 //***************************************************************************
 // LSM303 Accelerometer, which has a different address from the magnetometer
@@ -547,19 +156,13 @@ bool beginLSM303_A()
   write8(LSM303_REGISTER_ACCEL_CTRL_REG4_A, 0b00111000);
   accel.gainX = accel.gainY = accel.gainZ = 0.012;
 
-  // set G level and
-  g = int16_t(1 / accel.gainX);
-  accel.gainX *= 9.80665;
-  accel.gainY *= 9.80665;
-  accel.gainZ *= 9.80665;
-
   return true;
 } // end beginLSM303_A
 
 //***************************************************************************
 // LSM303 Magnetometer
 //***************************************************************************
-boolean beginLSM303_M()
+bool beginLSM303_M()
 {
 #define LSM303_ADDRESS_MAG (0x3C >> 1)
 #define LSM303_REGISTER_MAG_MR_REG_M (0x02)
@@ -568,6 +171,10 @@ boolean beginLSM303_M()
 #define LSM303_MAGGAIN_1_3 (0x20)
 #define LSM303_MAGRATE_15 (0x10)
 #define LSM303_IRA_REG_M (0x0A)
+
+  float gainX;
+  float gainY;
+  float gainZ;
 
   // Define bus settings and start bus - ONLY I2C for LSM303!!
   magBus.i2cRate = 400000;
@@ -593,13 +200,29 @@ boolean beginLSM303_M()
   // enable magnetometer
   write8(LSM303_REGISTER_MAG_MR_REG_M, 0x00);
 
-  // set gain
-  //_lsm303Mag_Gauss_LSB_XY = 1100;
-  //_lsm303Mag_Gauss_LSB_Z  = 980;
-  write8(LSM303_REGISTER_MAG_CRB_REG_M, LSM303_MAGGAIN_1_3);
-  float gainX = (float)(1 / 1100);
-  float gainY = (float)(1 / 1100);
-  float gainZ = (float)(1 / 980);
+  // set the gain based on whether or not the magnetic switch capability is enabled
+  if (settings.magSwitchEnable)
+  {
+    // set to 8 Gauss
+    write8(LSM303_REGISTER_MAG_CRB_REG_M, 0b11100000);
+    gainX = (float)(1 / 230);
+    gainY = (float)(1 / 230);
+    gainZ = (float)(1 / 205);
+    // correct the bias
+    mag.biasX /= 5;
+    mag.biasY /= 5;
+    mag.biasZ /= 5;
+  }
+  else
+  {
+    // set to maximum sensitivity
+    write8(LSM303_REGISTER_MAG_CRB_REG_M, LSM303_MAGGAIN_1_3);
+    gainX = (float)(1 / 1100);
+    gainY = (float)(1 / 1100);
+    gainZ = (float)(1 / 980);
+  }
+
+  // Set the Max Gain
   mag.ADCmax = 32768;
 
   // LSM303 has different gains for different axes so we must correct for orientation
@@ -764,12 +387,12 @@ bool beginLSM9DS1_AG()
 {
 
 // Addresses for the registers
-#define LSM9DS1_ADDRESS_ACCELGYRO (0x6B)
-#define LSM9DS1_XG_ID (0b01101000)
-#define LSM9DS1_REGISTER_CTRL_REG1_G (0x10)
-#define LSM9DS1_REGISTER_CTRL_REG5_XL (0x1F)
-#define LSM9DS1_REGISTER_CTRL_REG6_XL (0x20)
-#define LSM9DS1_REGISTER_CTRL_REG3_G (0x12)
+#define LSM9DS1_ADDRESS_ACCELGYRO 0x6B
+#define LSM9DS1_XG_ID 0b01101000
+#define LSM9DS1_REGISTER_CTRL_REG1_G 0x10
+#define LSM9DS1_REGISTER_CTRL_REG5_XL 0x1F
+#define LSM9DS1_REGISTER_CTRL_REG6_XL 0x20
+#define LSM9DS1_REGISTER_CTRL_REG3_G 0x12
 
   // Define bus settings and start bus
   if (sensors.accelBusType == 'I')
@@ -783,7 +406,7 @@ bool beginLSM9DS1_AG()
     accelBus.spiSet = gyroBus.spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
     accelBus.cs = pins.accelCS;
     startSPI(&accelBus, sensors.accelBusNum);
-    accelBus.readMask = gyroBus.readMask = 0x80;
+    accelBus.readMask = 0x80;
   }
   gyroBus = accelBus;
 
@@ -807,22 +430,34 @@ bool beginLSM9DS1_AG()
   Serial.println(F("LSM9DS1 Accelerometer/Gyroscope OK!"));
 
   // Set Accelerometer 16G Range, 952 Hz ODR
-  write8(LSM9DS1_REGISTER_CTRL_REG6_XL, 0b11001000);
-  accel.ADCmax = (int16_t)(0.95 * 32768);
-  accel.gainX = accel.gainY = accel.gainZ = 0.000735;
+  uint8_t setVal = 0b11001000;
+  write8(LSM9DS1_REGISTER_CTRL_REG6_XL, setVal);
+  delay(10);
+  uint8_t val = read8(LSM9DS1_REGISTER_CTRL_REG6_XL);
+  if (val != setVal)
+  {
+    Serial.print("Accel CTRL REG6 Error: ");
+    Serial.println(val);
+    return false;
+  }
+  accel.ADCmax = (int16_t)(0.9 * 32768);
+  accel.gainX = accel.gainY = accel.gainZ = 0.000732;
 
   // Set Gyroscope 2000dps Range, 952 Hz ODR
-  write8(LSM9DS1_REGISTER_CTRL_REG1_G, 0b11011000);
+  setVal = 0b11011000;
+  write8(LSM9DS1_REGISTER_CTRL_REG1_G, setVal);
+  delay(10);
+  val = read8(LSM9DS1_REGISTER_CTRL_REG1_G);
+  if (val != setVal)
+  {
+    Serial.print("Accel CTRL REG1_G Error: ");
+    Serial.println(val);
+    return false;
+  }
   gyro.gainX = gyro.gainY = gyro.gainZ = 0.07;
   gyro.ADCmax = 32768;
   // set time between samples
-  accel.timeBtwnSamp = gyro.timeBtwnSamp = 1000UL;
-
-  // set Accelerometer G level and add G to the gains
-  g = int16_t(1 / accel.gainX);
-  accel.gainX *= 9.80665;
-  accel.gainY *= 9.80665;
-  accel.gainZ *= 9.80665;
+  accel.timeBtwnSamp = gyro.timeBtwnSamp = 1050UL;
 
   return true;
 }
@@ -876,8 +511,22 @@ bool beginLSM9DS1_M()
 
   // Mag Temp Compensation, UltraHigh Perf, 40Hz
   write8(LSM9DS1_REGISTER_CTRL_REG1_M, 0b11111000);
-  // Set gain to 4 Gauss
-  write8(LSM9DS1_REGISTER_CTRL_REG2_M, 0x00);
+  // Set the gain
+  if (settings.magSwitchEnable)
+  {
+    // Set gain to 8 Gauss
+    write8(LSM9DS1_REGISTER_CTRL_REG2_M, 0b00100000);
+    mag.gainX = mag.gainY = mag.gainZ = (float)(0.29 / 1000);
+    mag.biasX /= 2;
+    mag.biasY /= 2;
+    mag.biasZ /= 2;
+  }
+  else
+  {
+    // Set gain to 4 Gauss
+    write8(LSM9DS1_REGISTER_CTRL_REG2_M, 0x00);
+    mag.gainX = mag.gainY = mag.gainZ = (float)(0.14 / 1000);
+  }
   // Mag Continuous Conversion
   write8(LSM9DS1_REGISTER_CTRL_REG3_M, 0x00);
   // Mag Reverse Magnetometer MSB / LSB Order, Z-Axis high-perf mode
@@ -885,9 +534,6 @@ bool beginLSM9DS1_M()
 
   // set time between samples
   mag.timeBtwnSamp = 25000UL;
-
-  // set gains
-  mag.gainX = mag.gainY = mag.gainZ = (float)(0.14 / 1000);
 
   return true;
 } // end begin
@@ -936,6 +582,98 @@ void getLSM9DS1_M()
   mag.rawX = (int16_t)(rawData[0] | (rawData[1] << 8));
   mag.rawY = (int16_t)(rawData[2] | (rawData[3] << 8));
   mag.rawZ = (int16_t)(rawData[4] | (rawData[5] << 8));
+}
+
+//***************************************************************************
+// LSM6DS3TR Accelerometer & Gyroscope
+//***************************************************************************
+bool beginLSM6DS3TR()
+{
+
+// Addresses for the registers
+#define LSM6DS3TR_ADDRESS_ACCELGYRO (0x6A)
+#define LSM6DS3TR_WHOAMI (0x0F)
+#define LSM6DS3TR_REGISTER_CTRL1_XL (0x10)
+#define LSM6DS3TR_REGISTER_CTRL2_G (0x11)
+
+  // Define bus settings and start bus
+  if (sensors.accelBusType == 'I')
+  {
+    accelBus.i2cAddress = gyroBus.i2cAddress = LSM6DS3TR_ADDRESS_ACCELGYRO;
+    accelBus.i2cRate = gyroBus.i2cRate = 1000000;
+    startI2C(&accelBus, sensors.accelBusNum);
+  }
+  else
+  {
+    accelBus.spiSet = gyroBus.spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
+    accelBus.cs = gyroBus.cs = pins.accelCS;
+    accelBus.readMask = gyroBus.readMask = 0x80;
+    startSPI(&accelBus, sensors.accelBusNum);
+  }
+  gyroBus = accelBus;
+
+  // if I2C, check if there is a sensor at this address
+  if (sensors.accelBusType == 'I')
+  {
+    if (!testSensor(LSM6DS3TR_ADDRESS_ACCELGYRO))
+    {
+      Serial.println(F("LSM6DS3TR no reply!"));
+      return false;
+    }
+  }
+
+  // check whoami
+  byte id = read8(LSM6DS3TR_WHOAMI);
+  if (id != 0b01101010)
+  {
+    Serial.println(F("LSM6DS3TR not found!"));
+    return false;
+  }
+  Serial.println(F("LSM6DS3TR OK!"));
+
+  // CTRL1_XL_ODR: 0111 = 833Hz, 1000 = 1.66kHz, 1001 = 3.33kHz, 1010 = 6.66kHz
+  // CTRL1_XL_FS: 00 = 2G, 01 = 16G, 10 = 4G, 11 = 8G
+  // CTRL1_XL_LPF_BW_SEL: 0 = ODR/2, 1 = ODR/4
+  // CTRL1_XL_BW0_XL: 0 = 1.5kHz, 1 = 400kHz
+  // Accelerometer set 16G Range, 1.66kHz ODR, ODR/2, 400kHz
+  write8(LSM6DS3TR_REGISTER_CTRL1_XL, 0b01110100);
+  accel.gainX = accel.gainY = accel.gainZ = 0.000488;
+  accel.ADCmax = (int16_t)(0.98 * 32768);
+  accel.timeBtwnSamp = 1201;
+
+  // CTRL2_G_ODR: 0111 = 833Hz, 1000 = 1.66kHz, 1001 = 3.33kHz, 1010 = 6.66kHz
+  // CTRL2_G_FS: 00 = 245dps, 01 = 500dps, 10 = 1000dps, 11 = 2000dps
+  // CTRL2_G_FS125: 0 = disabled, 1 = enabled (not applicable)
+  // CTRL2_G: bit 0 must be 0
+  // Gyroscope set 2000dps Range, 1.66kHz ODR
+  write8(LSM6DS3TR_REGISTER_CTRL2_G, 0b01111100);
+  delay(10);
+  gyro.gainX = gyro.gainY = gyro.gainZ = 0.07;
+  gyro.ADCmax = 32768;
+  gyro.timeBtwnSamp = 1201;
+
+  return true;
+} // end begin
+
+void getLSM6DS3TR()
+{
+
+// this routine uses the LSM6DS33 burst read to rapidly read 12 bytes from the sensors
+#define LSM6DS3TR_REGISTER_OUTX_L_G (0x22)
+
+  // setup the bus
+  activeBus = &accelBus;
+
+  // read the data
+  burstRead(LSM6DS3TR_REGISTER_OUTX_L_G, 12);
+
+  // assemble the data
+  gyro.rawX = (int16_t)(rawData[0] | (rawData[1] << 8));
+  gyro.rawY = (int16_t)(rawData[2] | (rawData[3] << 8));
+  gyro.rawZ = (int16_t)(rawData[4] | (rawData[5] << 8));
+  accel.rawX = (int16_t)(rawData[6] | (rawData[7] << 8));
+  accel.rawY = (int16_t)(rawData[8] | (rawData[9] << 8));
+  accel.rawZ = (int16_t)(rawData[10] | (rawData[11] << 8));
 }
 
 //***************************************************************************
@@ -1000,12 +738,6 @@ bool beginLSM6DS33()
   gyro.ADCmax = 32768;
   gyro.timeBtwnSamp = 602;
 
-  // Set G level and add G to the gains
-  g = int16_t(1 / accel.gainX);
-  accel.gainX *= 9.80665;
-  accel.gainY *= 9.80665;
-  accel.gainZ *= 9.80665;
-
   return true;
 } // end begin
 
@@ -1020,6 +752,111 @@ void getLSM6DS33()
 
   // read the data
   burstRead(LSM6DS33_REGISTER_OUTX_L_G, 12);
+
+  // assemble the data
+  gyro.rawX = (int16_t)(rawData[0] | (rawData[1] << 8));
+  gyro.rawY = (int16_t)(rawData[2] | (rawData[3] << 8));
+  gyro.rawZ = (int16_t)(rawData[4] | (rawData[5] << 8));
+  accel.rawX = (int16_t)(rawData[6] | (rawData[7] << 8));
+  accel.rawY = (int16_t)(rawData[8] | (rawData[9] << 8));
+  accel.rawZ = (int16_t)(rawData[10] | (rawData[11] << 8));
+}
+
+//***************************************************************************
+// LSM6DSOX Accelerometer & Gyroscope
+//***************************************************************************
+bool beginLSM6DSOX()
+{
+
+// Addresses for the registers
+#define LSM6DSOX_ADDRESS_ACCELGYRO (0x6A)
+#define LSM6DSOX_WHOAMI (0x0F)
+#define LSM6DSOX_REGISTER_CTRL1_XL (0x10)
+#define LSM6DSOX_REGISTER_CTRL2_G (0x11)
+
+  // Define bus settings and start bus
+  if (sensors.accelBusType == 'I')
+  {
+    accelBus.i2cAddress = gyroBus.i2cAddress = LSM6DSOX_ADDRESS_ACCELGYRO;
+    accelBus.i2cRate = gyroBus.i2cRate = 400000;
+    startI2C(&accelBus, sensors.accelBusNum);
+  }
+  else
+  {
+    accelBus.spiSet = gyroBus.spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
+    accelBus.cs = gyroBus.cs = pins.accelCS;
+    accelBus.readMask = gyroBus.readMask = 0x80;
+    startSPI(&accelBus, sensors.accelBusNum);
+  }
+  gyroBus = accelBus;
+
+  // if I2C, check if there is a sensor at this address
+  if (sensors.accelBusType == 'I')
+  {
+    if (!testSensor(LSM6DSOX_ADDRESS_ACCELGYRO))
+    {
+      Serial.println(F("LSM6DSOX no reply!"));
+      return false;
+    }
+  }
+
+  // check whoami
+  byte id = read8(LSM6DSOX_WHOAMI);
+  if (id != 0b01101100)
+  {
+    Serial.print(F("LSM6DSOX not found! "));
+    Serial.println(id, BIN);
+    return false;
+  }
+  Serial.println(F("LSM6DSOX OK!"));
+
+  // CTRL_REG1_ODR: 1000 = 1.66kHz, 1001 = 3.33kHz, 1010 = 6.66kHz
+  // CTRL_REG1_FS: 00 = 2G, 01 = 16G, 10 = 4G, 11 = 8G
+  // CTRL_REG1_BW: 00 = 400Hz, 01 = 200Hz, 10 = 100Hz, 11 = 50Hz
+  // Accelerometer set 16G Range, 1.66kHz ODR, 400Hz BW
+  uint8_t setVal = 0b10000100;
+  write8(LSM6DSOX_REGISTER_CTRL1_XL, setVal);
+  delay(10);
+  uint8_t val = read8(LSM6DSOX_REGISTER_CTRL1_XL);
+  if (val != setVal)
+  {
+    Serial.print("Accel CTRL1 Error: ");
+    Serial.println(val);
+    return false;
+  }
+  accel.gainX = accel.gainY = accel.gainZ = 0.000488;
+  accel.ADCmax = (int16_t)(0.98 * 32768);
+  accel.timeBtwnSamp = 602;
+
+  // Gyroscope set 2000dps Range, 1.66kHz ODR
+  setVal = 0b10001100;
+  write8(LSM6DSOX_REGISTER_CTRL2_G, setVal);
+  delay(10);
+  val = read8(LSM6DSOX_REGISTER_CTRL2_G);
+  if (val != setVal)
+  {
+    Serial.print("Accel CTRL2_G Error: ");
+    Serial.println(val);
+    return false;
+  }
+  gyro.gainX = gyro.gainY = gyro.gainZ = 0.07;
+  gyro.ADCmax = 32768;
+  gyro.timeBtwnSamp = 602;
+
+  return true;
+} // end begin
+
+void getLSM6DSOX()
+{
+
+// this routine uses the LSM6DS33 burst read to rapidly read 12 bytes from the sensors
+#define LSM6DSOX_REGISTER_OUTX_L_G (0x22)
+
+  // setup the bus
+  activeBus = &accelBus;
+
+  // read the data
+  burstRead(LSM6DSOX_REGISTER_OUTX_L_G, 12);
 
   // assemble the data
   gyro.rawX = (int16_t)(rawData[0] | (rawData[1] << 8));
@@ -1088,12 +925,6 @@ bool beginMPU6050()
   // set time between samples
   accel.timeBtwnSamp = gyro.timeBtwnSamp = 1000UL;
 
-  // set Accelerometer G level and add G to the gains
-  g = int16_t(1 / accel.gainX);
-  accel.gainX *= 9.80665;
-  accel.gainY *= 9.80665;
-  accel.gainZ *= 9.80665;
-
   return true;
 }
 
@@ -1118,13 +949,179 @@ void getMPU6050()
   gyro.rawZ = (int16_t)(rawData[13] | (rawData[12] << 8));
 }
 //***************************************************************************
+// MPU9250 Accelerometer & Gyroscope
+//***************************************************************************
+bool beginMPU9250_AG()
+{
+// Addresses for the registers
+#define MPU9250_IMU_ADDRESS (0x68)
+#define REGISTER_GYRO_CONFIG (0x1B)
+#define REGISTER_ACCEL_CONFIG (0x1C)
+#define REGISTER_PWR_MGMT_1 (0x6B)
+#define GYRO_FULL_SCALE_250_DPS (0x00)
+#define GYRO_FULL_SCALE_500_DPS (0x08)
+#define GYRO_FULL_SCALE_1000_DPS (0x10)
+#define GYRO_FULL_SCALE_2000_DPS (0x18)
+#define ACC_FULL_SCALE_2G (0x00)
+#define ACC_FULL_SCALE_4G (0x08)
+#define ACC_FULL_SCALE_8G (0x10)
+#define ACC_FULL_SCALE_16G (0x18)
+#define REGISTER_INT_PIN_CFG (0x37)
+#define REGISTER_VALUE_BYPASS_EN (0x02)
+  // Define bus settings and start bus
+  if (sensors.accelBusType == 'I')
+  {
+    accelBus.i2cAddress = gyroBus.i2cAddress = MPU9250_IMU_ADDRESS;
+    accelBus.i2cRate = gyroBus.i2cRate = 400000;
+    startI2C(&accelBus, sensors.accelBusNum);
+  }
+  else
+  {
+    accelBus.spiSet = gyroBus.spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
+    accelBus.cs = gyroBus.cs = pins.accelCS;
+    startSPI(&accelBus, sensors.accelBusNum);
+    accelBus.readMask = gyroBus.readMask = 0x80;
+  }
+  gyroBus = accelBus;
+
+  // if I2C, check if there is a sensor at this address
+  if (sensors.accelBusType == 'I')
+  {
+    if (!testSensor(MPU9250_IMU_ADDRESS))
+    {
+      Serial.println(F("MPU9250 no reply!"));
+      return false;
+    }
+  }
+
+  // check whoami
+  byte id = read8(0x75);
+  if (id != 0x71)
+  {
+    Serial.println(F("MPU9250 not found!"));
+    return false;
+  }
+  Serial.println(F("MPU9250 Accelerometer/Gyroscope OK!"));
+  // PWR_MGMT_1---wake up device
+  write8(REGISTER_PWR_MGMT_1, 0);
+  // set BYPAS_EN  byte
+  write8(REGISTER_INT_PIN_CFG, REGISTER_VALUE_BYPASS_EN);
+  // Set Accelerometer 16G Range
+  write8(REGISTER_ACCEL_CONFIG, 0b00011000);
+  accel.ADCmax = (int16_t)(0.98 * 32768);
+  accel.gainX = accel.gainY = accel.gainZ = 1.0 / 2048;
+
+  // Set Gyroscope 2000dps Range
+  write8(REGISTER_GYRO_CONFIG, 0b00011000);
+  gyro.gainX = gyro.gainY = gyro.gainZ = 1.0 / 16.4;
+  gyro.ADCmax = 32768;
+  // set time between samples
+  accel.timeBtwnSamp = gyro.timeBtwnSamp = 1000UL;
+  return true;
+}
+
+void getMPU9250_AG()
+{
+
+// the MPU6050 accel and gyro output registers are not sequential, so we need to draw 14 bytes
+#define MPU6050_REGISTER_OUTX_H_G (0x3B)
+
+  // setup the bus
+  activeBus = &accelBus;
+
+  // read the data
+  burstRead(MPU6050_REGISTER_OUTX_H_G, 14);
+
+  // assemble the data
+  accel.rawX = (int16_t)(rawData[1] | (rawData[0] << 8));
+  accel.rawY = (int16_t)(rawData[3] | (rawData[2] << 8));
+  accel.rawZ = (int16_t)(rawData[5] | (rawData[4] << 8));
+  gyro.rawX = (int16_t)(rawData[9] | (rawData[8] << 8));
+  gyro.rawY = (int16_t)(rawData[11] | (rawData[10] << 8));
+  gyro.rawZ = (int16_t)(rawData[13] | (rawData[12] << 8));
+}
+
+//***************************************************************************
+// MPU9250 Magnetometer
+//***************************************************************************
+bool beginMPU9250_M()
+{
+#define MAGNETOMETER_I2C_ADDRESS (0x0C)
+#define REGISTER_AK8963_CNTL_1 (0x0A)
+#define REGISTER_AK8963_WIA (0x00)
+#define MAGNETOMETER_WHO_AM_I_CODE (0x48)
+#define AK8963_CONT_MODE_8HZ (0x12)
+#define AK8963_CONT_MODE_100HZ (0x16)
+#define REGISTER_AK8963_HXL (0x03)
+
+  // Define bus settings and start bus
+  if (sensors.magBusType == 'I')
+  {
+    magBus.i2cAddress = MAGNETOMETER_I2C_ADDRESS;
+    magBus.i2cRate = 400000;
+    startI2C(&magBus, sensors.magBusNum);
+  }
+  else
+  {
+    magBus.spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
+    magBus.cs = pins.magCS;
+    magBus.readMask = 0x80;
+    magBus.incMask = 0x40;
+    startSPI(&magBus, sensors.magBusNum);
+  }
+  // If I2C, check if there is a sensor at this address
+  if (sensors.magBusType == 'I')
+  {
+    if (!testSensor(MAGNETOMETER_I2C_ADDRESS))
+    {
+      Serial.println(F("MPU9250 Magnetometer not respond!"));
+      return false;
+    }
+  }
+
+  // check whoami
+  byte id = read8(REGISTER_AK8963_WIA);
+  if (id != MAGNETOMETER_WHO_AM_I_CODE)
+  {
+    Serial.println(F("MPU9250 Magnetometer not found!"));
+    return false;
+  }
+  Serial.println(F("MPU9250 Magnetometer OK!"));
+  // Set magnetometer hertz
+  write8(REGISTER_AK8963_CNTL_1, AK8963_CONT_MODE_100HZ);
+  delay(200);
+
+  mag.gainX = mag.gainY = mag.gainZ = 1.0 / 0.6;
+  mag.ADCmax = 32768;
+  mag.timeBtwnSamp = 25000UL;
+
+  return true;
+}
+
+void getMPU9250_M()
+{
+
+// This routine reads 7 bytes from the magnetometer
+#define AK8963_REGISTER_OUT_X_L_M (0x03)
+
+  // set the pointe for the active bus
+  activeBus = &magBus;
+
+  // read data
+  burstRead(AK8963_REGISTER_OUT_X_L_M, 7);
+  mag.rawX = (int16_t)(rawData[1] | ((int16_t)rawData[0] << 8));
+  mag.rawY = (int16_t)(rawData[3] | ((int16_t)rawData[2] << 8));
+  mag.rawZ = (int16_t)(rawData[5] | ((int16_t)rawData[4] << 8));
+}
+
+//***************************************************************************
 // LIS3MDL Magnetometer
 //***************************************************************************
 bool beginLIS3MDL()
 {
 
 // Addresses for the registers
-#define LIS3MDL_ADDRESS_MAG (0x1E)
+#define LIS3MDL_ADDRESS_MAG (0x1C)
 #define LIS3MDL_WHOAMI (0x0F)
 #define LIS3MDL_REGISTER_CTRL_REG1 (0x20)
 #define LIS3MDL_REGISTER_CTRL_REG2 (0x21)
@@ -1164,23 +1161,74 @@ bool beginLIS3MDL()
   }
   Serial.println(F("LIS3MDL OK!"));
 
-  // Temp Sensor Off, UltraHigh Perf, 40Hz
-  write8(LIS3MDL_REGISTER_CTRL_REG1, 0b01111000);
+  // CTRL_REG1: Temp Sensor Off, UltraHigh Perf, 40Hz
+  uint8_t setVal = 0b01111000;
+  write8(LIS3MDL_REGISTER_CTRL_REG1, setVal);
+  delay(10);
+  uint8_t val = read8(LIS3MDL_REGISTER_CTRL_REG1);
+  if (val != setVal)
+  {
+    Serial.print("Mag CTRL1 Error: ");
+    Serial.println(val);
+    return false;
+  }
 
-  // Set gain to 4 Gauss
-  write8(LIS3MDL_REGISTER_CTRL_REG2, 0x00);
+  // CTRL_REG2: gain level
+  if (settings.magSwitchEnable)
+  {
+    // Set gain to 8 Gauss
+    setVal = 0b00100000;
+    write8(LIS3MDL_REGISTER_CTRL_REG2, setVal);
 
-  // Mag Continuous Conversion
-  write8(LIS3MDL_REGISTER_CTRL_REG3, 0x00);
+    mag.gainX = mag.gainY = mag.gainZ = (float)(1 / 3421);
+    mag.biasX /= 2;
+    mag.biasY /= 2;
+    mag.biasZ /= 2;
+  }
+  else
+  {
+    // Set gain to 4 Gauss
+    setVal = 0x00;
+    write8(LIS3MDL_REGISTER_CTRL_REG2, setVal);
+    mag.gainX = mag.gainY = mag.gainZ = (float)(1 / 6842);
+  }
 
-  // Mag Reverse Magnetometer MSB / LSB Order, Z-Axis high-perf mode
-  write8(LIS3MDL_REGISTER_CTRL_REG3, 0b00001100);
+  // Check the CTRL_REG2 settings
+  delay(10);
+  val = read8(LIS3MDL_REGISTER_CTRL_REG2);
+  if (val != setVal)
+  {
+    Serial.print("Mag CTRL2 Error: ");
+    Serial.println(val);
+    return false;
+  }
+
+  // CTRL_REG3: Mag Continuous Conversion
+  setVal = 0x00;
+  write8(LIS3MDL_REGISTER_CTRL_REG3, setVal);
+  delay(10);
+  val = read8(LIS3MDL_REGISTER_CTRL_REG2);
+  if (val != setVal)
+  {
+    Serial.print("Mag CTRL3 Error: ");
+    Serial.println(val);
+    return false;
+  }
+
+  // CTRL_REG4: Z-Axis high-perf mode
+  setVal = 0b00001100;
+  write8(LIS3MDL_REGISTER_CTRL_REG4, setVal);
+  delay(10);
+  val = read8(LIS3MDL_REGISTER_CTRL_REG4);
+  if (val != setVal)
+  {
+    Serial.print("Mag CTRL4 Error: ");
+    Serial.println(val);
+    return false;
+  }
 
   // set time between samples
   mag.timeBtwnSamp = 25000UL;
-
-  // set gain
-  mag.gainX = mag.gainY = mag.gainZ = (float)(1 / 6842);
 
   return true;
 } // end begin
@@ -1290,19 +1338,23 @@ void getLPS25H()
 bool beginADXL377()
 {
 
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
-// disable the multiplexer pin
-// pinMode(A11, INPUT_DISABLE);
-#endif
-
   // set gain
-  highG.gainX = highG.gainY = highG.gainZ = 9.80655 / 129;
-  high1G = 129;
+  float Vmax = 3.3;        // this is the input voltage to the ADXL377
+  float mV_per_G = 0.0065; // this is the mV per G from the data sheet
+  highG.gainX = highG.gainY = highG.gainZ = Vmax / (mV_per_G)*adcConvert;
+
   sizeHighGfilter = 10;
   highG.timeBtwnSamp = 1000UL;
-  startADXL377 = true;
 
-  Serial.println(F("ADXL377 OK!"));
+  if (analogRead(A2) > 500 && analogRead(A3) > 500 && analogRead(A4) > 500)
+  {
+    Serial.println("ADXL377 OK!");
+  }
+  else
+  {
+    Serial.println("ADXL377 not connected!");
+  }
+
   return true;
 }
 
@@ -1310,7 +1362,6 @@ void getADXL377()
 {
 
   // measured time is 45 micros per reading
-  const uint16_t ADCmidValue = 32768;
   long highGsumX = 0L;
   long highGsumY = 0L;
   long highGsumZ = 0L;
@@ -1368,7 +1419,7 @@ bool beginH3LIS331DL()
   }
 
   // check whoami
-  byte id = 0x00;
+  uint8_t id = 0x00;
   id = read8(0x0F);
   if (id != 0x32)
   {
@@ -1385,8 +1436,7 @@ bool beginH3LIS331DL()
   // Normal Mode (001), 1000 Hz data rate (11), Enable axes (111)
   write8(H3LIS331_REGISTER_CTRL_REG1, 0b00111111);
 
-  high1G = 21;
-  highG.gainX = highG.gainY = highG.gainZ = 0.049 * 9.80665;
+  highG.gainX = highG.gainY = highG.gainZ = 0.049;
   sizeHighGfilter = 15;
   highG.timeBtwnSamp = 1000UL;
 
@@ -1415,10 +1465,12 @@ void getH3LIS331DL()
 //***************************************************************************
 // ADS1115 ADC interface to ADXL377
 //***************************************************************************
-bool beginADS1115(char dataRate)
+bool beginADS1115()
 {
 
 #define ADS1115_ADDRESS (0x48)
+
+  char dataRate = 'F';
 
   // Define bus settings and start bus - ONLY I2C!!
   highGBus.i2cAddress = ADS1115_ADDRESS;
@@ -1467,8 +1519,7 @@ bool beginADS1115(char dataRate)
 #define ADS1115_REG_CONFIG (0x01)
   write16(ADS1115_REG_CONFIG, ADS1115settings);
 
-  highG.gainX = highG.gainY = highG.gainZ = 0.0183 * 9.80665;
-  high1G = 55;
+  highG.gainX = highG.gainY = highG.gainZ = 0.0183;
   sizeHighGfilter = 10;
   highG.timeBtwnSamp = 1163UL;
 
@@ -1625,7 +1676,7 @@ struct BMP180_calib_data
 };
 static BMP180_calib_data _BMP180_coeffs;
 
-boolean beginBMP180()
+bool beginBMP180()
 {
 
 #define BMP180_REGISTER_CAL_AC1 0xAA
@@ -1642,7 +1693,7 @@ boolean beginBMP180()
 
   // Define bus settings and start bus - ONLY I2C!!
   baroBus.i2cAddress = BMP180_ADDRESS;
-  baroBus.i2cRate = 1000000;
+  baroBus.i2cRate = 400000;
   startI2C(&baroBus, sensors.baroBusNum);
 
   // establish contact
@@ -1699,13 +1750,13 @@ void getBMP180()
 
   // Get a BMP180 barometric event if needed
   // See if a new temp is needed
-  const unsigned long tmpRdTime = 4500;  // BMP180 needs 4.5ms to read temp
-  const unsigned long bmpRdTime = 25500; // BMP180 needs 25.5ms to read pressure
-  static boolean getTemp = true;
-  static boolean readTemp = false;
-  static boolean readPress = false;
-  static unsigned long tempReadStart;
-  static unsigned long pressReadStart;
+  const uint32_t tmpRdTime = 4500UL;  // BMP180 needs 4.5ms to read temp
+  const uint32_t bmpRdTime = 25500UL; // BMP180 needs 25.5ms to read pressure
+  static bool getTemp = true;
+  static bool readTemp = false;
+  static bool readPress = false;
+  static uint32_t tempReadStart;
+  static uint32_t pressReadStart;
 
   if (getTemp)
   {
@@ -2376,8 +2427,8 @@ void getBMP388()
 //***************************************************************************
 #define MS56XX_ADDRESS (0x77)
 uint16_t MS56XX_PROM[6];
-int32_t MS56XX_dT;
-int32_t MS56XX_TEMP;
+int64_t MS56XX_dT;
+int64_t MS56XX_TEMP;
 
 void cmdMS56XX(byte cmd)
 {
@@ -2530,25 +2581,32 @@ void getMS56XX()
 float ConvertTempMS56XX()
 {
 
+  union
+  {
+    uint32_t val;
+    uint8_t b[4];
+  } D2;
   uint16_t C6 = MS56XX_PROM[5];
   uint16_t C5 = MS56XX_PROM[4];
 
-  uint32_t D2 = (rawData[0] << 16) | (rawData[1] << 8) | rawData[2];
+  D2.b[0] = rawData[2];
+  D2.b[1] = rawData[1];
+  D2.b[2] = rawData[0];
+  D2.b[3] = 0;
 
-  MS56XX_dT = D2 - (C5 << 8);
+  MS56XX_dT = (uint64_t)D2.val - ((uint64_t)C5 << 8);
 
-  MS56XX_TEMP = 2000 + ((MS56XX_dT * C6) >> 23);
+  MS56XX_TEMP = 2000 + (((int64_t)MS56XX_dT * (uint64_t)C6) >> 23);
 
   int32_t T2 = 0L;
   if (MS56XX_TEMP < 2000)
   {
-    T2 = (MS56XX_dT * MS56XX_dT) >> 31;
+    T2 = ((int64_t)MS56XX_dT * (int64_t)MS56XX_dT) >> 31;
   }
 
   MS56XX_TEMP -= T2;
 
   float finalTemp = ((float)MS56XX_TEMP) * 0.01 - baro.tempOffset;
-  ;
 
   baro.newTemp = true;
 
@@ -2557,7 +2615,6 @@ float ConvertTempMS56XX()
 
 float ConvertPressMS56XX()
 {
-
   uint16_t C1 = MS56XX_PROM[0];
   uint16_t C2 = MS56XX_PROM[1];
   uint16_t C3 = MS56XX_PROM[2];
@@ -2573,7 +2630,7 @@ float ConvertPressMS56XX()
   //-------------------------------------------------------------
   // MS5611
   //-------------------------------------------------------------
-  if (sensors.status_MS5611)
+  if (sensors.baro == 5)
   {
     OFF1 = ((int64_t)C2 << 16) + (((int64_t)C4 * (int64_t)MS56XX_dT) >> 7);
     SENS = ((int64_t)C1 << 15) + (((int64_t)C3 * (int64_t)MS56XX_dT) >> 8);
@@ -2601,7 +2658,7 @@ float ConvertPressMS56XX()
   //-------------------------------------------------------------
   // MS5607
   //-------------------------------------------------------------
-  if (sensors.status_MS5607)
+  if (sensors.baro == 6)
   {
     OFF1 = ((int64_t)C2 << 17) + (((int64_t)C4 * (int64_t)MS56XX_dT) >> 6);
     SENS = ((int64_t)C1 << 16) + (((int64_t)C3 * (int64_t)MS56XX_dT) >> 7);

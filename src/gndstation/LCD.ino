@@ -73,29 +73,24 @@ void startupLCD()
   lcd.print('\r');
   lcd.print(rocketName);
   //----------------------------------------
-  // GPS Latitude - Line 3
+  // Header - Line 3
   //----------------------------------------
   lcd.print('\r');
-  if (isnan(lastGPSlat) || lastGPSlat == 0.0)
-  {
-    lastGPSlat = 1234.5678;
-  }
-  parseCoord(lastGPSlat);
-  lcd.print(dataString);
-  lcd.print((char)39);
-  lcd.print(charGPSlat);
+  lcd.print("GPS Location:");
   //----------------------------------------
   // GPS Latitude - Line 4
   //----------------------------------------
   lcd.print('\r');
-  if (isnan(lastGPSlon) || lastGPSlon == 0.0)
+  if (isnan(lastGPSlat) || lastGPSlon == 0.0)
   {
-    lastGPSlon = 1234.5678;
+    lastGPSlon = 12.34567;
+    lastGPSlat = 12.34567;
   }
-  parseCoord(lastGPSlon);
+  dtostrf(lastGPSlat, 2, 5, dataString);
   lcd.print(dataString);
-  lcd.print((char)39);
-  lcd.print(charGPSlon);
+  lcd.print(",");
+  dtostrf(lastGPSlon, 3, 5, dataString);
+  lcd.print(dataString);
 }
 
 void preflightLCD()
@@ -145,10 +140,14 @@ void preflightLCD()
   // line 3
   myString += "Base Alt: ";
   myString += String((long)(baseAlt * 3.2808));
-  myString += " ft";
+  myString += "ft";
   for (byte i = myString.length() + 1; i < 81; i++)
   {
     myString += " ";
+  }
+  if (GPS.location.isUpdated())
+  {
+    myString.setCharAt(79, 'G');
   }
   lcd.print(myString);
   if (debugSerial)
@@ -178,7 +177,6 @@ void inflightLCD()
   {
     myString += " ";
   }
-  Serial.println(myString);
   //  //light up the LCD if it has this capability
   //  if(!ledLight){for(byte i = 0; i < sizeof(greenEvents) && !ledLight; i++){
   //    if(event == greenEvents[i]){
@@ -213,22 +211,48 @@ void inflightLCD()
     myString += " ";
   }
   //----------------------------------------
-  // signal strength - line 4
+  // signal strength, bearing, distance, and GPS - line 4
   //----------------------------------------
-  myString += "Signal: ";
-  myString += String(signalStrength);
-  myString += " dBm";
-  for (byte i = myString.length() + 1; i < 78; i++)
+  myString += String((int)signalStrength);
+  myString += "dBm ";
+  // display GNSS data
+  if (GPSlock == 1)
   {
+    float bearing = TinyGPSPlus::courseTo(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    myString += String((int)bearing);
+    myString += (char)39;
     myString += " ";
+    float rktDist = TinyGPSPlus::distanceBetween(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    rktDist /= 1609.34; // convert to miles
+    if (rktDist > 99)
+    {
+      rktDist = 99.9;
+    }
+    if (rktDist < 0.2)
+    {
+      myString += String((int)(rktDist * 5280));
+      myString += "ft";
+    }
+    else
+    {
+      myString += String((int)rktDist);
+      myString += ".";
+      myString += String((int)((rktDist - (int)rktDist) * 10));
+      myString += "mi";
+    }
   }
-  if (micros() - lastGPSfix < 2000000UL)
-  {
-    myString += "GPS";
-  }
+  // no GNSS data
   else
   {
-    myString += "   ";
+    for (byte i = myString.length() + 1; i < 70; i++)
+    {
+      myString += " ";
+    }
+    myString += "No GPS Data";
+  }
+  for (byte i = myString.length() + 1; i < 81; i++)
+  {
+    myString += " ";
   }
   lcd.print(myString);
   if (debugSerial)
@@ -269,35 +293,59 @@ void postflightLCD()
     myString += " ";
   }
   //----------------------------------------
-  // GPS Latitude - Line 3
+  // GPS Coordinates - Line 3
   //----------------------------------------
-  if (GPSlock == 0)
+  if (isnan(lastGPSlat) || lastGPSlat == 0.0)
   {
-    GPSlatitude = 1234.1234F;
-    charGPSlat = 'N';
+    lastGPSlat = lastGPSlon = 12.34567;
   }
-  parseCoord(GPSlatitude);
+  dtostrf(lastGPSlat, 2, 5, dataString);
   myString += dataString;
   myString.trim();
-  myString += (char)39;
-  myString += charGPSlat;
+  myString += ",";
+  dtostrf(lastGPSlon, 2, 5, dataString);
+  myString += dataString;
+  myString.trim();
   for (byte i = myString.length() + 1; i < 61; i++)
   {
     myString += " ";
   }
   //----------------------------------------
-  // GPS Latitude - Line 4
+  // Bearing and distance - Line 4
   //----------------------------------------
-  if (GPSlock == 0)
+  if (GPS.location.isUpdated())
   {
-    GPSlongitude = 1234.1234F;
-    charGPSlon = 'W';
+    // bearing
+    float bearing = TinyGPSPlus::courseTo(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    myString += String((int)bearing);
+    myString += (char)39;
+    myString += " ";
+    // distance
+    float dist2rkt = TinyGPSPlus::distanceBetween(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    dist2rkt /= 1609.34; // convert to miles
+    if (dist2rkt > 99)
+    {
+      dist2rkt = 99.9;
+    }
+    // convert to feet if below 0.2 miles
+    if (dist2rkt < 0.2)
+    {
+      dist2rkt *= 5280;
+      myString += String((int)dist2rkt);
+      myString += "ft";
+    }
+    // display miles
+    else
+    {
+      dtostrf(dist2rkt, 2, 1, dataString);
+      myString += dataString;
+      myString += " mi";
+    }
   }
-  parseCoord(GPSlongitude);
-  myString += dataString;
-  myString.trim();
-  myString += (char)39;
-  myString += charGPSlon;
+  else
+  {
+    myString += "Receiver No GPS";
+  }
   for (byte i = myString.length() + 1; i < 81; i++)
   {
     myString += " ";
@@ -328,39 +376,64 @@ void signalLostLCD()
     myString += " ";
   }
   //----------------------------------------
-  // GPS Latitude - Line 2
+  // GPS Coordinates - Line 2
   //----------------------------------------
   if (isnan(lastGPSlat) || lastGPSlat == 0.0)
   {
-    lastGPSlat = 1234.5678;
+    lastGPSlat = lastGPSlon = 12.34567;
   }
-  parseCoord(lastGPSlat);
+  dtostrf(lastGPSlat, 2, 5, dataString);
   myString += dataString;
   myString.trim();
-  myString += (char)39;
-  myString += charGPSlat;
+  myString += ",";
+  dtostrf(lastGPSlon, 2, 5, dataString);
+  myString += dataString;
+  myString.trim();
   for (byte i = myString.length() + 1; i < 41; i++)
   {
     myString += " ";
   }
   //----------------------------------------
-  // GPS Latitude - Line 2
+  // GPS Distance & Bearing to Rocket
   //----------------------------------------
-  if (isnan(lastGPSlon) || lastGPSlon == 0.0)
+  if (GPS.location.isUpdated())
   {
-    lastGPSlon = 1234.5678;
+    myString += "Dist: ";
+    float dist2rkt = TinyGPSPlus::distanceBetween(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    dist2rkt /= 1609.34; // convert to miles
+    if (dist2rkt > 99)
+    {
+      dist2rkt = 99.9;
+    }
+    // convert to feet if below 0.2 miles
+    if (dist2rkt < 0.2)
+    {
+      dist2rkt *= 5280;
+      myString += String((int)dist2rkt);
+      myString += "ft, ";
+    }
+    // display miles
+    else
+    {
+      dtostrf(dist2rkt, 2, 1, dataString);
+      myString += dataString;
+      myString += "mi, ";
+    }
+    // bearing
+    float bearing = TinyGPSPlus::courseTo(GPS.location.lat(), GPS.location.lng(), lastGPSlat, lastGPSlon);
+    myString += String((int)bearing);
+    myString += (char)39;
   }
-  parseCoord(lastGPSlon);
-  myString += dataString;
-  myString.trim();
-  myString += (char)39;
-  myString += charGPSlon;
+  else
+  {
+    myString += "Receiver No GPS";
+  }
   for (byte i = myString.length() + 1; i < 61; i++)
   {
     myString += " ";
   }
   //----------------------------------------
-  // Max Values - Line 3
+  // Max Values - Line 4
   //----------------------------------------
   float dispAlt = maxAltitude * unitConvert;
   myString += String(dispAlt, 0);
@@ -405,25 +478,4 @@ void changeFreqLCD()
   lcd.print(myString);
   lastRX = micros();
   delay(1000);
-}
-
-void parseCoord(float coord)
-{
-  dtostrf(coord, 2, 4, dataString);
-  strPosn = 0;
-  while (dataString[strPosn] != '.')
-  {
-    strPosn++;
-  }
-  byte endPosn = strPosn + 1;
-  while (dataString[endPosn] != '\0')
-  {
-    endPosn++;
-  }
-  while (endPosn >= strPosn - 2)
-  {
-    dataString[endPosn + 1] = dataString[endPosn];
-    endPosn--;
-  }
-  dataString[strPosn - 2] = (char)223;
 }

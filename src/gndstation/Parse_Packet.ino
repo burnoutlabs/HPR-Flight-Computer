@@ -28,26 +28,22 @@ void preflightPacket(byte rxPacket[])
   radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
   pktPosn++; // 27
   baseGPSalt = radioInt.unionInt;
-  charGPSlat = (int8_t)rxPacket[pktPosn];
-  pktPosn++; // 28
   for (byte i = 0; i < 4; i++)
   {
     radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
     pktPosn++;
-  } // 32
+  } // 31
   GPSlatitude = radioUnion.GPScoord;
-  charGPSlon = (byte)rxPacket[pktPosn];
-  pktPosn++; // 33
   for (byte i = 0; i < 4; i++)
   {
     radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
     pktPosn++;
-  } // 37
+  } // 35
   GPSlongitude = radioUnion.GPScoord;
   radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 38
+  pktPosn++; // 36
   radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 39
+  pktPosn++; // 37
   satNum = radioInt.unionInt;
   if (activeRadio->FHSS)
   {
@@ -82,9 +78,9 @@ void inflightPacket(byte rxPacket[])
   // parse the GPS data and packet number first, then the samples
   pktPosn = 52 + eventPosn;
   radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 53
+  pktPosn++; // 52
   radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 54
+  pktPosn++; // 53
   packetnum = radioInt.unionInt;
 
   if (debugSerial)
@@ -101,36 +97,37 @@ void inflightPacket(byte rxPacket[])
     pktPosn++;
   }
   radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 55
+  pktPosn++; // 54
   radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 56
+  pktPosn++; // 55
   GPSalt = radioInt.unionInt;
   for (byte j = 0; j < 4; j++)
   {
     radioUnion.unionByte[j] = (byte)rxPacket[pktPosn];
     pktPosn++;
-  } // 60
+  } // 59
   GPSlatitude = radioUnion.GPScoord;
   for (byte j = 0; j < 4; j++)
   {
     radioUnion.unionByte[j] = (byte)rxPacket[pktPosn];
     pktPosn++;
-  } // 64
+  } // 63
   GPSlongitude = radioUnion.GPScoord;
 
-  // determine GPS lock from the packet length
-  if (len < 60 + eventPosn)
-  {
-    GPSlock = 0;
-  }
-  else
+  // determine GPS lock from coordinates
+  if (fabs(GPSlongitude) > 0)
   {
     GPSlock = 1;
     lastGPSfix = micros();
   }
+  else
+  {
+    GPSlock = 0;
+  }
 
   // parse inflight packet of 4 samples
   pktPosn = eventPosn;
+  strPosn = 0;
   for (byte i = 0; i < 4; i++)
   {
 
@@ -178,16 +175,34 @@ void inflightPacket(byte rxPacket[])
     radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
     pktPosn++; // 13
     accel = radioInt.unionInt;
-    if (!apogee && accel > maxG)
-    {
-      maxG = accel;
-    }
-
-    // write to the SD card
     if (SDinit)
     {
       writeInflightData();
     }
+    if (!apogee && accel > maxG)
+    {
+      maxG = accel;
+    }
+  }
+
+  // write to the SD card
+  if (parseSustainer)
+  {
+    sustainerFile.write(dataString, strPosn);
+  }
+  if (parseBooster)
+  {
+    boosterFile.write(dataString, strPosn);
+  }
+
+  // sync the SD card
+  if (SDinit && parseSustainer)
+  {
+    sustainerFile.sync();
+  }
+  if (SDinit && parseBooster)
+  {
+    boosterFile.sync();
   }
 
   if (settings.debugSerial)
@@ -251,16 +266,12 @@ void postflightPacket(byte rxPacket[])
   pktPosn++;
   GPSalt += ((byte)rxPacket[pktPosn] << 8);
   pktPosn++;
-  charGPSlat = (byte)rxPacket[pktPosn];
-  pktPosn++;
   for (byte i = 0; i < 4; i++)
   {
     radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
     pktPosn++;
   }
   GPSlatitude = radioUnion.GPScoord;
-  charGPSlon = (byte)rxPacket[pktPosn];
-  pktPosn++;
   for (byte i = 0; i < 4; i++)
   {
     radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];

@@ -6,9 +6,12 @@
  * This logic is modular to facilitate maintenance and is the central control point
  * for the rocket's operations during its various flight stages.
  * 
+ * Apogee is detected by any of three methods once booster burnout is confirmed and the
+ * false-liftoff check has ended: accelerometer-integrated velocity, barometric velocity
+ * (below 9000m, Mach-proofed by the accelerometer velocity), or sensor fusion.
+ * 
  * @remark Change log:
  * - 17 JUL 21: Initial breakout created
- * - 19 SEP 23: Removed accelerometer-based apogee detection due to early deployments
  */
 
 
@@ -37,7 +40,7 @@ void checkEvents()
     {
       EEPROM.update(eeprom.lastEvent, radio.event);
     }
-    radioTimer.begin(timerSendPkt, pktInterval.postFlight);
+    radioTimer.begin(timerBuildPkt, pktInterval.postFlight);
     fltTime.touchdown = fltTime.timeCurrent;
     gnss.touchdown.hour = GPS.time.hour();
     gnss.touchdown.minute = GPS.time.minute();
@@ -45,18 +48,25 @@ void checkEvents()
     gnss.touchdown.mili = GPS.time.centisecond();
   }
 
-  // Check false trigger until the flight time has passed the minimum time
+  // Check false trigger until:
+  // the flight time has passed the minimum check-time
+  // or the integrated speed is greater than the liftoff detection threshold
+  // or the integrated altitude is greater than the liftoff detection threshold
   if (events.falseLiftoffCheck)
   {
-    if (fltTime.timeCurrent > fltTime.detectLiftoffTime)
+    if (fltTime.timeCurrent > fltTime.detectLiftoffTime || accelVel > thresholdVel || accelAlt > thresholdAlt)
     {
       events.falseLiftoffCheck = false;
     }
-    // if a negative acceleration is detected within the initial moments of liftoff and the rocket will not go 100 feet
+    // if the acceleration drops below the trigger threshold
+    // and the flight time is greater than 0.25 seconds but less than 0.5 seconds
+    // and the integrated velocity inidicates the rocket will not go 100 feet
     // then reset flight variables and resume launch detect
-    // 100 feet is declared to be the minimum altitude at which the rocket will attempt to deploy recovery devices
-    // this will ensure that devices are deployed if the motor CATOs after a short boost
-    if (accel.z < gTrigger && accelVel < thresholdVel)
+    //--------------Developer's Note--------------------------------------------------------------------------
+    // 100 feet is the minimum altitude at which the flight computer will attempt to deploy recovery devices
+    // this increases the chance of a successful deployment if the motor CATOs after a short boost
+    // 0.25 seconds is the typical time to depart the rail so that transient negative accelerations cannot reset the system
+    if (accel.z < gTrigger && accelVel < thresholdVel && fltTime.timeCurrent > clearRailTime)
     {
       if (settings.testMode)
       {
@@ -74,7 +84,7 @@ void checkEvents()
       pktPosn = 0;
       radio.packetnum = 0;
       sampNum = 0;
-      radioTimer.begin(timerSendPkt, pktInterval.preLiftoff);
+      radioTimer.begin(timerBuildPkt, pktInterval.preLiftoff);
       // reset the high-g filter
       filterPosn = 0;
       highGsum = 0;
@@ -83,8 +93,11 @@ void checkEvents()
         highGfilter[i] = 0;
       }
       filterFull = false;
+      // reset the acceleration based altitude and velocity
       accelVel = 0;
       accelAlt = 0;
+      // sync the SD card
+      syncSD();
     }
   } // end falseLiftoffCheck
 
@@ -101,7 +114,7 @@ void checkEvents()
     fltTime.boosterBurnout = fltTime.timeCurrent;
   }
 
-  // check for booster motor burp for 1 second after burnout is detected
+  // check for booster motor burp for 0.1 second after burnout is detected
   if (events.boosterBurnoutCheck)
   {
     if (fltTime.timeCurrent - fltTime.boosterBurnout > boosterBurpTime)
@@ -458,12 +471,14 @@ void checkEvents()
     }
   } // End Airstart Flight Mode
 
-  // Barometric based apogee detection: rocket must be below 13000m and barometric velocity < -10 and accelometer velocity < 70 (needed for Mach proofing)
-  bool baroApogee = (baro.Vel < -10 && accelVel < 70 && (baro.Alt + baro.baseAlt) < 13000) ? true : false;
+  // Accelerometer based apogee detection
+  bool accelApogee = (accelVel < -10) ? true : false;
+  // Barometric based apogee detection: rocket must be below 9000m and barometric velocity < 0 and motor burnout is detected and accelometer velocity < 70 (needed for Mach proofing)
+  bool baroApogee = (baro.Vel < -10 && accelVel < 70 && (baro.Alt + baro.baseAlt) < 9000) ? true : false;
   // Sensor fusion based apogee detection
   bool fusionApogee = (fusionVel < 0) ? true : false;
   // Check for apogee event
-  if (!events.apogee && events.boosterBurnout && !events.boosterBurnoutCheck && !pyroFire && (baroApogee || fusionApogee))
+  if (!events.apogee && !pyroFire && events.boosterBurnout && !events.boosterBurnoutCheck && !events.falseLiftoffCheck && (accelApogee || baroApogee || fusionApogee))
   {
     events.apogee = true;
     fltTime.apogee = fltTime.timeCurrent;

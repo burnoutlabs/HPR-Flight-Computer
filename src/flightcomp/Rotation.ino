@@ -14,32 +14,63 @@
  * - 17 JUL 21: Initial file breakout created.
  * - 02 AUG 21: Revised PID control system, fixed bugs in DCM2D.
  * - 26 DEC 21: Initial coding for return system.
+ * - 11 MAY 24: Updated for the Teensy 4.0/4.1 FPU at 64-bit precision.
  */
 
 /**
  * @brief Calculate quaternion rotation at 100Hz using only gyroscope data.
+ *
+ * On Teensy 4.0/4.1 (`__IMXRT1062__`) the calculation runs in double precision on the
+ * 64-bit FPU; on the other boards it runs in single precision (float).
+ *
  * @param dx Gyroscope data along the X-axis.
  * @param dy Gyroscope data along the Y-axis.
  * @param dz Gyroscope data along the Z-axis.
  * @param gyroGain Gain factor for the gyroscope.
  */
-void getQuatRotn(float dx, float dy, float dz, float gyroGain)
+#if defined(__IMXRT1062__)
+void getQuatRotn(double dx, double dy, double dz, double gyroGain)
 {
 
+  // Local Vectors
+  static double Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
+  double QuatDiff[5];
+  double Rotn1[4];
+  double Rotn2[4];
+  double Rotn3[4];
+  double quatLen;
+  double a, b, c, d, a2, b2, c2, d2, ab, ac, ad, bc, bd, cd;
+
+  // Local rotation holders
+  static double prevRollZ = 0;
+  static double quatRollZ = 0;
+  static double fullRollZ = 0;
+
+  const double rotn2rad = gyroGain * DEG_TO_RAD / 1000000; // divide by 1000000 since dx,dy,dz are millionths of a degree
+
+#else
+
+void getQuatRotn(float dx, float dy, float dz, float gyroGain)
+{
   // Local Vectors
   static float Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
   float QuatDiff[5];
   float Rotn1[4];
   float Rotn2[4];
   float Rotn3[4];
+  float quatLen;
+  float a, b, c, d, a2, b2, c2, d2, ab, ac, ad, bc, bd, cd;
 
   // Local rotation holders
   static long prevRollZ = 0;
   static long quatRollZ = 0;
   static long fullRollZ = 0;
 
+  const float rotn2rad = gyroGain * DEG_TO_RAD / 1000000; // divide by 1000000 since dx,dy,dz are millionths of a degree
+
+#endif
+
   // convert to radians
-  const float rotn2rad = gyroGain * (3.14159265359 / 180) / 1000000;
   dx *= rotn2rad;
   dy *= rotn2rad;
   dz *= rotn2rad;
@@ -57,27 +88,27 @@ void getQuatRotn(float dx, float dy, float dz, float gyroGain)
   Quat[4] += QuatDiff[4];
 
   // re-normalize
-  float quatLen = powf(Quat[1] * Quat[1] + Quat[2] * Quat[2] + Quat[3] * Quat[3] + Quat[4] * Quat[4], -0.5);
+  quatLen = powf(Quat[1] * Quat[1] + Quat[2] * Quat[2] + Quat[3] * Quat[3] + Quat[4] * Quat[4], -0.5);
   Quat[1] *= quatLen;
   Quat[2] *= quatLen;
   Quat[3] *= quatLen;
   Quat[4] *= quatLen;
 
   // compute the components of the rotation matrix
-  float a = Quat[1];
-  float b = Quat[2];
-  float c = Quat[3];
-  float d = Quat[4];
-  float a2 = a * a;
-  float b2 = b * b;
-  float c2 = c * c;
-  float d2 = d * d;
-  float ab = a * b;
-  float ac = a * c;
-  float ad = a * d;
-  float bc = b * c;
-  float bd = b * d;
-  float cd = c * d;
+  a = Quat[1];
+  b = Quat[2];
+  c = Quat[3];
+  d = Quat[4];
+  a2 = a * a;
+  b2 = b * b;
+  c2 = c * c;
+  d2 = d * d;
+  ab = a * b;
+  ac = a * c;
+  ad = a * d;
+  bc = b * c;
+  bd = b * d;
+  cd = c * d;
 
   // Compute rotation matrix
   Rotn1[1] = a2 + b2 - c2 - d2;
@@ -147,11 +178,10 @@ void getDCM2DRotn(long dx, long dy, long dz, float gyroGain)
   static float rawX = 0.0F;
   static float rawY = 0.0F;
   static float rawZ = 0.0F;
-  const float deg2rad = 3.141592653589793238462 / 180;
 
   // Calculate new Z angle from gyro data
   rawZ += dz;
-  float radNewRoll = dz * gyroGain * deg2rad * mlnth; // convert to radians
+  float radNewRoll = dz * gyroGain * DEG_TO_RAD * mlnth; // convert to radians
 
   // compute sin(roll) and cos(roll)
   float sinNewRoll = sinSmallAngle(radNewRoll);
@@ -482,8 +512,8 @@ void setCanards()
 void setRTB()
 {
 
-  const float rollTorqueArm = 0.046482;   // 1.83in = 0.0464m
-  const float bearingTorqueArm = 0.46482; // 18in = 0.464m
+  const float rollTorqueArm = 0.046482; // 1.83in = 0.0464m
+  // const float bearingTorqueArm =  0.46482;//18in = 0.464m
   float maxTorqueInput = 4.0;
   const float KpLandPoint = 0.03;
   const float KiLandPoint = 0.0;
@@ -531,7 +561,7 @@ void setRTB()
 
   float bearingSetpoint = speedAtan2(x, y);
   float magBearing = speedAtan2(mag.y, mag.x);
-  float trackBearing = GPS.course.deg();
+  // float trackBearing = GPS.course.deg();
   float bearingError = bearingSetpoint - magBearing;
 
   // Update Integral Terms
@@ -620,7 +650,7 @@ void setRTB()
   }
 
   // else estimate the landing point
-  float timeToLand = (gnss.alt - settings.mainDeployAlt) / fabs(gnss.vel); // subtract out the main deployment altitude because we want it back at the launch position when the mains come out
+  // float timeToLand = (gnss.alt - settings.mainDeployAlt) / fabs(gnss.vel);//subtract out the main deployment altitude because we want it back at the launch position when the mains come out
   float distanceToLandPoint = calcGPSdist(gnss.liftoff.longitude, gnss.liftoff.latitude, gnss.longitude, gnss.latitude);
   float gpsGroundSpeed = GPS.speed.mps();
   float landPointEst = distanceToLandPoint / gpsGroundSpeed;
@@ -668,38 +698,16 @@ float calcGPSdist(float Alon, float Alat, float Blon, float Blat)
   // calculate the difference between the points
   float diffLat = Alat - Blat;
   float diffLon = Alon - Blon;
+  // determine the maximum latitude for interpolation below
+  float absAlat = fabs(Alat);
+  float absBlat = fabs(Blat);
+  float maxLat = fabs(Alat) > fabs(Blat) ? absAlat : absBlat;
 
   // convert latitude degrees to meters
   diffLat *= 111111.1;
+  diffLon *= (111111.1 * speedCos((int)(maxLat * 10)));
 
-  // https://www.sco.wisc.edu/2022/01/21/how-big-is-a-degree/#:~:text=Therefore%20we%20can%20easily%20compute,further%20subdivisions%20of%20a%20degree.&text=circumference%20of%2025%2C000%20miles.
-  // convert longitude degrees to meters through a simple interpolation table
-  if (fabs(diffLon) <= 15.0)
-  {
-    diffLon = fabs(diffLon) * 107325.1 + (15 - fabs(diffLon)) * 3786;
-  }
-  else if (fabs(diffLon) <= 30.0)
-  {
-    diffLon = fabs(diffLon) * 96225.0 + (30 - fabs(diffLon)) * 11100.1;
-  }
-  else if (fabs(diffLon) <= 45.0)
-  {
-    diffLon = fabs(diffLon) * 78567.4 + (45 - fabs(diffLon)) * 17657.6;
-  }
-  else if (fabs(diffLon) <= 60.0)
-  {
-    diffLon = fabs(diffLon) * 55555.6 + (60 - fabs(diffLon)) * 23011.8;
-  }
-  else if (fabs(diffLon) <= 75.0)
-  {
-    diffLon = fabs(diffLon) * 28757.7 + (75 - fabs(diffLon)) * 26797.9;
-  }
-  else
-  {
-    diffLon = (90 - fabs(diffLon)) * 28757.7;
-  } // why one would launch rockets at the north pole is beyond me
-
-  return sqrt(diffLat * diffLat + diffLon * diffLon);
+  return sqrtf(diffLat * diffLat + diffLon * diffLon);
 } // end calcGPSdist
 
 /**
