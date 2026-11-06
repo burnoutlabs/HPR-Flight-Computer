@@ -1,0 +1,85 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PLATFORMIO_VERSION: "6.1.19"
+  PLATFORMIO_SETTING_ENABLE_TELEMETRY: "no"
+
+jobs:
+  firmware:
+    name: ${{ matrix.project }} / ${{ matrix.env }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      # Keep in step with default_envs in firmware/*/platformio.ini.
+      matrix:
+        include:
+          - { project: flightcomp, env: teensy41 }
+          - { project: flightcomp, env: teensy40 }
+          - { project: flightcomp, env: teensy36 }
+          - { project: flightcomp, env: teensy35 }
+          - { project: flightcomp, env: teensy31 }
+          - { project: gndstation, env: teensy41 }
+          - { project: gndstation, env: teensy40 }
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ env.PLATFORMIO_VERSION }}-${{ hashFiles('firmware/*/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: python -m pip install "platformio==${PLATFORMIO_VERSION}"
+
+      - name: Build
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+          PIO_ENV: ${{ matrix.env }}
+        run: pio run -d "firmware/${PROJECT}" -e "${PIO_ENV}" 2>&1 | tee build.log
+
+      - name: Report flash and RAM
+        if: always()
+        shell: bash
+        env:
+          PROJECT: ${{ matrix.project }}
+          PIO_ENV: ${{ matrix.env }}
+        run: |
+          {
+            echo "### ${PROJECT} / ${PIO_ENV}"
+            echo '```'
+            grep -E '^(teensy_size:|RAM:|Flash:)' build.log || echo "no size output (build failed?)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # A single check to mark as required on master, so adding or removing an
+  # env does not mean editing branch protection.
+  all-builds:
+    name: all builds
+    if: always()
+    needs: firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every firmware build to pass
+        env:
+          RESULT: ${{ needs.firmware.result }}
+        run: |
+          echo "firmware matrix result: ${RESULT}"
+          test "${RESULT}" = success

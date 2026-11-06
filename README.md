@@ -60,7 +60,7 @@ For large or high-power projects, a commercially available backup computer is st
 - **Pressure Sensor**: MS5611 (recommended), MS5607, MPL3115A2, BMP180, BMP280, or BMP388 (Note: BMP280 & BMP388 incompatible with telemetry due to EMI)
 - **GNSS**: UBLOX M6, M7, M8, M9 (NEO footprint supported in PCB file) or Adafruit Ultimate GPS
 - **LoRa Telemetry**: RFM96W or RFM95W, both capable of TX on 433MHz or 915MHz (433MHz USA: Amateur License Required, EUR: License Free), or an RFD900 serial radio
-- **Other devices**: any accelerometer, gyroscope, magnetometer, high-G accelerometer, barometer, GNSS receiver, or packet radio without a built-in driver can be used through an external library (see `src/flightcomp/Device_Drivers_External.ino`)
+- **Other devices**: any accelerometer, gyroscope, magnetometer, high-G accelerometer, barometer, GNSS receiver, or packet radio without a built-in driver can be used through an external library (see `firmware/flightcomp/src/Device_Drivers_External.ino`)
 
 ## GROUND STATION COMPONENTS
 
@@ -72,8 +72,28 @@ For large or high-power projects, a commercially available backup computer is st
 - **SD Card**: Adafruit SD Card breakout board
 - **Antenna**: 433Mhz 5-element Yagi (Ham Only) or 900Mhz (License Free)
 
-## ADDITIONAL LIBRARIES REQUIRED
+## BUILDING
 
-- TinyGPS++
-- SDfat and/or SD
-- SparkFun SerLCD (ground station)
+The firmware builds with [PlatformIO](https://platformio.org). There are two PlatformIO projects, one per firmware image, each with an env per supported board:
+
+| Project | Path | Envs |
+| --- | --- | --- |
+| Flight computer | `firmware/flightcomp` | `teensy41`, `teensy40`, `teensy36`, `teensy35`, `teensy31` (Teensy 3.2) |
+| Ground station | `firmware/gndstation` | `teensy41`, `teensy40` |
+
+```sh
+pip install platformio==6.1.19
+pio run -d firmware/flightcomp              # every flight computer env
+pio run -d firmware/flightcomp -e teensy41  # one board
+pio run -d firmware/flightcomp -e teensy41 -t upload
+```
+
+With [just](https://just.systems) installed, `just build` builds every env of both projects and `just check` runs the same build as CI. `just --list` shows the other recipes.
+
+Versions are pinned in each `platformio.ini`: the `teensy` platform 6.0.0, which bundles Teensyduino 1.62 (`framework-arduinoteensy` 1.162.0), TinyGPSPlus 1.0.3 and, for the ground station, SparkFun SerLCD 1.0.9. SdFat, SD, SPI, Wire, i2c_t3, PWMServo and EEPROM come with Teensyduino. The Teensy 3.2 env runs at 96 MHz, Teensyduino's default for that board.
+
+The sources are still Arduino `.ino` tabs, which PlatformIO merges into one translation unit in the same order the Arduino IDE does. Building from the Arduino IDE or arduino-cli is no longer supported: the sketch folders no longer match their main `.ino` names, and CI builds only with PlatformIO.
+
+`firmware/gndstation/archive` holds earlier ground station sketches for reference. They are not built.
+
+CI builds every env on each push to `master` and each pull request, and writes the flash and RAM use per board to the job summary. The Teensy 3.2 build uses about 78% of its flash, so watch that figure.
