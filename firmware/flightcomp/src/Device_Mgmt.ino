@@ -291,7 +291,10 @@ void setPolyMorphs()
     GNSSpowerSave = externalGNSS_PSM;
     break;
 
-  default:
+  default: // no GNSS
+    GNSSrestorDefaults = dummyVoid;
+    GNSSconfig = dummyVoid;
+    GNSSpowerSave = dummyVoid;
     break;
   }
 
