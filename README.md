@@ -1,10 +1,3 @@
-> [!IMPORTANT]
-> **This repository is superseded and will be archived.** Its history and fixes now live in
-> [burnoutlabs/HPR-Rocket-Flight-Computer](https://github.com/burnoutlabs/HPR-Rocket-Flight-Computer),
-> a fork of the upstream SparkyVT repository, on branch
-> [`restructure-v4.6`](https://github.com/burnoutlabs/HPR-Rocket-Flight-Computer/tree/restructure-v4.6).
-> Open new issues and changes there.
-
 
 **Builds on [HPR Rocket Flight Computer](https://github.com/SparkyVT/HPR-Rocket-Flight-Computer) by SparkyVT**  
 
