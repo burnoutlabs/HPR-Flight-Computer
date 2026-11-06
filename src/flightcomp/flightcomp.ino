@@ -1,5 +1,5 @@
 /**
- * @file hpr_flightcomp_V4_6_0.cpp
+ * @file flightcomp.ino
  * @brief High-Power Rocketry Flight Computer for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
  * 
  * Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
