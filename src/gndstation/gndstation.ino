@@ -25,6 +25,8 @@
  * 10) Delineate FHSS with a booster
  */
 
+// Must be defined before SdFat.h so that SdFat declares SoftSpiDriver
+#define SPI_DRIVER_SELECT 2
 #include <SdFat.h>
 #include <SerLCD.h>
 #include <TinyGPS++.h>
@@ -76,7 +78,6 @@ const uint8_t SOFT_SCK_PIN = 3;
 const uint8_t SD_CS_PIN = 0;
 
 // SdFat software SPI template
-#define SPI_DRIVER_SELECT 2
 SoftSpiDriver<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> softSpi;
 #define SD_CONFIG SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(0), &softSpi)
 
