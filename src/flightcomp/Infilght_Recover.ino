@@ -1,5 +1,5 @@
 /**
- * @file Inflight_Recovery.ino
+ * @file Infilght_Recover.ino
  * @brief Implements a recovery system for an altimeter with detailed reset functionality in case of accidental power loss or system reset.
  */
 
