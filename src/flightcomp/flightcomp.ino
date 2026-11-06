@@ -1,5 +1,5 @@
 /**
- * @file hpr_flightcomp_V4_6_0.cpp
+ * @file flightcomp.ino
  * @brief High-Power Rocketry Flight Computer for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
  * 
  * Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
@@ -209,94 +209,20 @@ struct
   int highGBusNum = 79;
   int baroPressOffset = 80; // 80-83 : barometer pressure offset, stays in this position so I don't have to recalibrate all my flight computers
   int baroTempOffset = 84;  // 84-87  : barometer temperature offset, stays in this position so I don't have to recalibrate all my flight computers
-  int baroBusType = 88;// High-Power Rocketry Flight Computer (TeensyFlight)
-// Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
-// Built for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
-// Code Line Count: 9644 lines of code = 2430 MainFile + 354 Bus_Mgmt + 2282 SensorDrivers + 900 Calibration + 625 SpeedTrig + 471 Inflight_Recover + 683 SD + 554 Rotation + 726 Telemetry + 327 Event_Logic + 292 GPSconfig
-//--------FEATURES----------
-// Dual-deploy flight computer capable to over 100,000ft
-// Two-stage & airstart capable with tilt-sensing safety features
-// Live telemetry over 433MHz or 915MHz LoRa (433MHz: USA amateur 70cm band, EUR licencse free) (915MHz: USA FHSS licence free or USA amateur license use non-FHSS)
-// 4 programmable high-current pyro outputs with continuity checks
-// Captures high-rate data at approximately 50,000 data points per second on SD card
-//--1000Hz 3-axis digital 16G and 100G accelerometer data logging
-//--1000Hz 3-axis digital 2000dps gyroscope data logging
-//--1000Hz of flight events & continuity data logging
-//--1000Hz of sensor-fuzed speed & altitude
-//--100Hz of roll, pitch, yaw rotation
-//--40Hz of of magnetic data logging and magnetic roll
-//--30Hz-100Hz of digital barometric data logging (Altitude, pressure, temperature)
-//--30Hz of main battery voltage (1000Hz during pyro events)
-//--20Hz of LoRa telemetry output (time, event, acceleration, speed, altitude, rotation, GNSS altitude, GNSS position, signal strength, packet number)
-//--5Hz-25Hz of GNSS data logging (chip-dependent data rates & constellations)
-//--Separate data file for each flight up to 100 flights
-// Simple, easy-to-use setup through the SD card
-//--User Selectable Flight Mode: Single-Stage, Two-Stage, Airstart, or Booster
-//--Configurable Apogee delay
-//--Optional Audible Battery Voltage report at startup
-//--Optional Magnetic Switch Startup & Shut-down
-//--Preflight audible reporting options: Perfectflight or Marsa
-//--User selectable frequency & power settings for telemetry
-//--8 configurable servo outputs (4 powered, 4 un-powered)
-//--User selectable inflight brownout recovery
-//--User selectable active stabilization for roll, pitch, and yaw correction
-//--User selectable return-to-pad controlled recovery
-// Tilt-sensing lockout for ignition of second stages and/or airstarts
-// Mach immune, sensor-fusion based apogee event
-// Barometric based main deploy event
-// Optional GNSS NMEA Log for TRA altitude contest reporting
-// Audible pre-flight continuity report
-// Audible Post-flight max altitude & speed report
-// Mount in any orientation, automatic orientation detection during calibration
-// Bench-test mode activated w/ tactile button; user configurable status messages over USB Serial
-// Built-in self-calibration mode
-// Report in SI or Metric units
-// Compatible with Teensy 3.2, 3.5, 3.6, 4.0, 4.1
-//--Compatible with many different sensors over I2C or SPI
-//--Configurable GPIO pins and hardware I2C/SPI bus options
-//--GPS can be wired to any available HW Serial port (Ublox M6, M7, M8, M9 supported)
-//-----------Change Log------------
-// V4_0_0 combines all previous versions coded for specific hardware setups; now compatible across multiple hardware configurations and can be mounted in any orientation
-// V4_1_0 adds upgrades for airstart capability, more flight event codes, improved settings file, PWM Pyro firing, quaternion rotation, improved continuity reporting, and timer interrupts for the radios
-// V4_1_1 eliminates timer interrupts since they interfere with the micros() command, improves telemetry timing, enables the Galileo GNSS system
-// V4_1_2 increases the GPS data rates and fixes some bugs in the pyro firing timing
-// V4_1_3 adds features to the settings file, moves some settings to the EEPROM file, adds calibration for the MPL3115A2, and fixes several smaller bugs
-// V4_1_4 adds magnetic rotation and increases the magnetic data capture rate (not functional yet)
-// V4_2_0 adds 915MHz FHSS telemetry capability, configurable GNSS & radio debugging
-// V4_2_1 was an alternate 915MHZ FHSS prototype: not used
-// V4_2_2 adds support for the MS5611 pressure sensor
-// V4_2_3 adds inflight recovery from brown-out or MCU reset, sensor fusion altitude and velocity, eliminates gyro high-pass filter, and revamps the EEPROM mapping for greater flexibility
-// V4_3_0 updates Quaternion rotation for the best possible precision, corrects some GNSS bugs, adds a faster version of the original rotation code
-// V4_3_1 makes FHSS an option on 915MHz and corrects some bugs in the FHSS power settings code, adds serial debug options into the settings file
-// V4_3_2 fixes bugs in the orientation & rotation routines, forces inline functions for faster execution, fixes multiple bugs picked up by the new Arduino compiler, breaks out more tabs for readability
-// V4_3_3 creates an user interface over serial to calibrate the barometer, extends gyro orientation integration through the entire flight
-// V4_3_3_1 is a bridge to fix instability in the initial V4_3_4 code
-// V4_3_4 enables active stabilization, creates basic fin trim code, and enables auto-adjusting gain on the IMU accelerometer
-// V4_3_5 removes auto-adjusting gain (no benefit in testing), improved calibration routines, extends baro calibration to all sensors, removed high-G axis mode from user settings, adds H3LIS331DL SPI bus support, added Ublox M9N support, fixed MS5611 bugs, added all settings to SD footer
-// V4_3_5_2 is a stand-alone version that evaluates cycle time diagnostics in order to ID chokepoints in the loop.  Results are nearly the same as the previous test done in 2019
-// V4_3_6 adds return-to-base functionality (beta testing), adds support for LSM6DS33, LIS3MDL, and MS5607, updates code for separate mag sensors, update for no high-G accelerometer, added sensor calibration checks & warnings, I2C bus & SDFat compatible with Teensy 3.2, 4.0, and 4.1
-// V4_4_0 creates flexible I2C and SPI bus routines so that any device can work on any bus.  Supports all I2C and/or SPI buses across Teensy3.X and Teensy4.X platforms
-// V4_4_1 builds on the unsuccessful 4_4_0 and attempts to fix bus management through simpler interface functions, overhauls orientation method for simplicity
-// V4_4_2 further streamlines the bus management functions with more efficient pointers, overclocks I2C speed on some sensors, implements controlled sampling of all sensors, continuously checks pre-flight continuity, improved barometric smoothing, fixed orientation bugs
-// V4_5_0 eliminates RadioHead library due to interferences with the PWMServo library, now uses an interval timer for precise control of the radio packet timing, fixes bugs in the telemetry timestamps
-// V4_5_1 adds optional GPS output file to capture NMEA sentences for contest flights, creates better radio resilliency by adding the callsign back into the header of the packet (coded but not yet implemented), fixed bug when TX and beep are both off in test mode
-// V4_5_2 finishes the draft RTB code, adds a canard calibration flight mode, fixed GPS bug with NEO-M8N
-// V4_5_3 uses the RFM96W in both 70cm and 900MHz mode based on user frequency input for 3 options: (1)900MHz FHSS up to 20dB, (2)900MHz dedicated frequency at 2dB, (3)70cm dedicated frequecy up to 20dB
-// V4_5_4 fixes a bug in the sensor timing that reduced the effective data capture rate
-// V4_5_5 removes launch detection user options since the algorithm is proven reliable, fixes a timing bug with the barometers, makes GPS configuration code more portable, adds LPS25H support, fixes bugs with LSM6DS33 and LIS3MDL, fixes SD card pre-processor bugs, added support for Adafruit Ultimate GPS
-// V4_6_0 improves portability of quaternion rotation code, added MPU6050 support, fixed calibration routine bug, cleaned up some of the GPS data processing, corrected major bug in high-G moving average, fixed a bug with the UBLOX power save mode
-//-------FUTURE UPGRADES----------
-// Active Stabilization (started)
-// Return-to-Base capability (started)
-// 3D position physics model
-// Remote Arm & Shutdown Commands over LoRa
-// Ground Station Bluetooth Datalink to smartphone (started)
-// Smartphone App
-//------TO DO LIST------
-// Finish bench testing of inflight recovery routines
-// Flight test airstart code
-// Debug Inflight Recovery
-// stuck-in-a-loop detection and breakout
+  int baroBusType = 88;
+  int baroBusNum = 89;
+  int radioBusType = 90;
+  int radioBusNum = 91;
+  int sdBusType = 92;
+  int sdBusNum = 93;
+  int gpsBusType = 94;
+  int gpsBusNum = 95;
+  int pyro1ContPin = 96;  // 96     : Pyro 1 Continuity Pin
+  int pyro1FirePin = 97;  // 97     : Pyro 1 Fire Pin
+  int pyro2ContPin = 98;  // 98     : Pyro 2 Continuity Pin
+  int pyro2FirePin = 99;  // 98     : Pyro 2 Fire Pin
+  int pyro3ContPin = 100; // 100   : Pyro 3 Continuity Pin
+  int pyro3FirePin = 101; // 101   : Pyro 3 Fire Pin
   int pyro4ContPin = 102;   // 102   : Pyro 4 Continuity Pin
   int pyro4FirePin = 103;   // 103   : Pyro 4 Fire Pin
   int nullPin = 104;        // 104        : Null Continuity / Fire Pin
@@ -314,94 +240,7 @@ struct
   int highGcsPin = 116;
   int sdCSpin = 117;
   int baroCSpin = 118;
-  int servo1pin = 119; // 119   : servo 1 control pin// High-Power Rocketry Flight Computer (TeensyFlight)
-// Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
-// Built for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
-// Code Line Count: 9644 lines of code = 2430 MainFile + 354 Bus_Mgmt + 2282 SensorDrivers + 900 Calibration + 625 SpeedTrig + 471 Inflight_Recover + 683 SD + 554 Rotation + 726 Telemetry + 327 Event_Logic + 292 GPSconfig
-//--------FEATURES----------
-// Dual-deploy flight computer capable to over 100,000ft
-// Two-stage & airstart capable with tilt-sensing safety features
-// Live telemetry over 433MHz or 915MHz LoRa (433MHz: USA amateur 70cm band, EUR licencse free) (915MHz: USA FHSS licence free or USA amateur license use non-FHSS)
-// 4 programmable high-current pyro outputs with continuity checks
-// Captures high-rate data at approximately 50,000 data points per second on SD card
-//--1000Hz 3-axis digital 16G and 100G accelerometer data logging
-//--1000Hz 3-axis digital 2000dps gyroscope data logging
-//--1000Hz of flight events & continuity data logging
-//--1000Hz of sensor-fuzed speed & altitude
-//--100Hz of roll, pitch, yaw rotation
-//--40Hz of of magnetic data logging and magnetic roll
-//--30Hz-100Hz of digital barometric data logging (Altitude, pressure, temperature)
-//--30Hz of main battery voltage (1000Hz during pyro events)
-//--20Hz of LoRa telemetry output (time, event, acceleration, speed, altitude, rotation, GNSS altitude, GNSS position, signal strength, packet number)
-//--5Hz-25Hz of GNSS data logging (chip-dependent data rates & constellations)
-//--Separate data file for each flight up to 100 flights
-// Simple, easy-to-use setup through the SD card
-//--User Selectable Flight Mode: Single-Stage, Two-Stage, Airstart, or Booster
-//--Configurable Apogee delay
-//--Optional Audible Battery Voltage report at startup
-//--Optional Magnetic Switch Startup & Shut-down
-//--Preflight audible reporting options: Perfectflight or Marsa
-//--User selectable frequency & power settings for telemetry
-//--8 configurable servo outputs (4 powered, 4 un-powered)
-//--User selectable inflight brownout recovery
-//--User selectable active stabilization for roll, pitch, and yaw correction
-//--User selectable return-to-pad controlled recovery
-// Tilt-sensing lockout for ignition of second stages and/or airstarts
-// Mach immune, sensor-fusion based apogee event
-// Barometric based main deploy event
-// Optional GNSS NMEA Log for TRA altitude contest reporting
-// Audible pre-flight continuity report
-// Audible Post-flight max altitude & speed report
-// Mount in any orientation, automatic orientation detection during calibration
-// Bench-test mode activated w/ tactile button; user configurable status messages over USB Serial
-// Built-in self-calibration mode
-// Report in SI or Metric units
-// Compatible with Teensy 3.2, 3.5, 3.6, 4.0, 4.1
-//--Compatible with many different sensors over I2C or SPI
-//--Configurable GPIO pins and hardware I2C/SPI bus options
-//--GPS can be wired to any available HW Serial port (Ublox M6, M7, M8, M9 supported)
-//-----------Change Log------------
-// V4_0_0 combines all previous versions coded for specific hardware setups; now compatible across multiple hardware configurations and can be mounted in any orientation
-// V4_1_0 adds upgrades for airstart capability, more flight event codes, improved settings file, PWM Pyro firing, quaternion rotation, improved continuity reporting, and timer interrupts for the radios
-// V4_1_1 eliminates timer interrupts since they interfere with the micros() command, improves telemetry timing, enables the Galileo GNSS system
-// V4_1_2 increases the GPS data rates and fixes some bugs in the pyro firing timing
-// V4_1_3 adds features to the settings file, moves some settings to the EEPROM file, adds calibration for the MPL3115A2, and fixes several smaller bugs
-// V4_1_4 adds magnetic rotation and increases the magnetic data capture rate (not functional yet)
-// V4_2_0 adds 915MHz FHSS telemetry capability, configurable GNSS & radio debugging
-// V4_2_1 was an alternate 915MHZ FHSS prototype: not used
-// V4_2_2 adds support for the MS5611 pressure sensor
-// V4_2_3 adds inflight recovery from brown-out or MCU reset, sensor fusion altitude and velocity, eliminates gyro high-pass filter, and revamps the EEPROM mapping for greater flexibility
-// V4_3_0 updates Quaternion rotation for the best possible precision, corrects some GNSS bugs, adds a faster version of the original rotation code
-// V4_3_1 makes FHSS an option on 915MHz and corrects some bugs in the FHSS power settings code, adds serial debug options into the settings file
-// V4_3_2 fixes bugs in the orientation & rotation routines, forces inline functions for faster execution, fixes multiple bugs picked up by the new Arduino compiler, breaks out more tabs for readability
-// V4_3_3 creates an user interface over serial to calibrate the barometer, extends gyro orientation integration through the entire flight
-// V4_3_3_1 is a bridge to fix instability in the initial V4_3_4 code
-// V4_3_4 enables active stabilization, creates basic fin trim code, and enables auto-adjusting gain on the IMU accelerometer
-// V4_3_5 removes auto-adjusting gain (no benefit in testing), improved calibration routines, extends baro calibration to all sensors, removed high-G axis mode from user settings, adds H3LIS331DL SPI bus support, added Ublox M9N support, fixed MS5611 bugs, added all settings to SD footer
-// V4_3_5_2 is a stand-alone version that evaluates cycle time diagnostics in order to ID chokepoints in the loop.  Results are nearly the same as the previous test done in 2019
-// V4_3_6 adds return-to-base functionality (beta testing), adds support for LSM6DS33, LIS3MDL, and MS5607, updates code for separate mag sensors, update for no high-G accelerometer, added sensor calibration checks & warnings, I2C bus & SDFat compatible with Teensy 3.2, 4.0, and 4.1
-// V4_4_0 creates flexible I2C and SPI bus routines so that any device can work on any bus.  Supports all I2C and/or SPI buses across Teensy3.X and Teensy4.X platforms
-// V4_4_1 builds on the unsuccessful 4_4_0 and attempts to fix bus management through simpler interface functions, overhauls orientation method for simplicity
-// V4_4_2 further streamlines the bus management functions with more efficient pointers, overclocks I2C speed on some sensors, implements controlled sampling of all sensors, continuously checks pre-flight continuity, improved barometric smoothing, fixed orientation bugs
-// V4_5_0 eliminates RadioHead library due to interferences with the PWMServo library, now uses an interval timer for precise control of the radio packet timing, fixes bugs in the telemetry timestamps
-// V4_5_1 adds optional GPS output file to capture NMEA sentences for contest flights, creates better radio resilliency by adding the callsign back into the header of the packet (coded but not yet implemented), fixed bug when TX and beep are both off in test mode
-// V4_5_2 finishes the draft RTB code, adds a canard calibration flight mode, fixed GPS bug with NEO-M8N
-// V4_5_3 uses the RFM96W in both 70cm and 900MHz mode based on user frequency input for 3 options: (1)900MHz FHSS up to 20dB, (2)900MHz dedicated frequency at 2dB, (3)70cm dedicated frequecy up to 20dB
-// V4_5_4 fixes a bug in the sensor timing that reduced the effective data capture rate
-// V4_5_5 removes launch detection user options since the algorithm is proven reliable, fixes a timing bug with the barometers, makes GPS configuration code more portable, adds LPS25H support, fixes bugs with LSM6DS33 and LIS3MDL, fixes SD card pre-processor bugs, added support for Adafruit Ultimate GPS
-// V4_6_0 improves portability of quaternion rotation code, added MPU6050 support, fixed calibration routine bug, cleaned up some of the GPS data processing, corrected major bug in high-G moving average, fixed a bug with the UBLOX power save mode
-//-------FUTURE UPGRADES----------
-// Active Stabilization (started)
-// Return-to-Base capability (started)
-// 3D position physics model
-// Remote Arm & Shutdown Commands over LoRa
-// Ground Station Bluetooth Datalink to smartphone (started)
-// Smartphone App
-//------TO DO LIST------
-// Finish bench testing of inflight recovery routines
-// Flight test airstart code
-// Debug Inflight Recovery
-// stuck-in-a-loop detection and breakout
+  int servo1pin = 119; // 119   : servo 1 control pin
   int servo2pin = 120; // 120   : servo 2 control pin
   int servo3pin = 121; // 121   : servo 3 control pin
   int servo4pin = 122; // 122   : servo 4 control pin
