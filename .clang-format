@@ -1,0 +1,14 @@
+# Code style for the C/C++ (Arduino .ino/.h) sources, written for clang-format 19.
+# Apply with: clang-format -i --assume-filename=x.cpp <file>
+# (.ino is not a C++ extension clang-format recognises on its own.)
+---
+BasedOnStyle: LLVM
+UseTab: Never
+IndentWidth: 2
+TabWidth: 2
+BreakBeforeBraces: Allman
+AllowShortIfStatementsOnASingleLine: false
+IndentCaseLabels: false
+ColumnLimit: 0
+SortIncludes: Never
+...
