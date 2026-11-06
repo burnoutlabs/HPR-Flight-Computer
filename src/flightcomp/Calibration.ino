@@ -1370,7 +1370,7 @@ void wiggleServo(byte servo)
     actionServo5.write(90 - servo5trim);
     break;
 
-  case 6:Bus_Mgmt.
+  case 6:
     actionServo6.write(80);
     delay(250);
     actionServo6.write(100);
