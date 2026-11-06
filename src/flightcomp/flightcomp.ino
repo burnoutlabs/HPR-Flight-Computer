@@ -1,26 +1,30 @@
 /**
  * @file flightcomp.ino
  * @brief High-Power Rocketry Flight Computer for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
- * 
+ *
  * Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
  * Modified and continued by Cameron K. Brooks
- * 
+ *
  *
  * @section features Features
  * - Dual-deploy flight computer capable to over 100,000ft
  * - Two-stage & airstart capable with tilt-sensing safety features
- * - Live telemetry over 433MHz or 915MHz LoRa 
- *   - 433MHz: USA amateur 70cm band, EUR license-free 
- *   - 915MHz: USA FHSS license-free or USA amateur license use non-FHSS
+ * - Live telemetry over 433MHz or 915MHz bands
+ *   - 433MHz: USA amateur 70cm band, EUR license-free
+ *   - 915MHz: USA FHSS license-free
+ *   - Optional APRS packets at 0.5Hz or telemetry data packets at 5Hz (APRS in development)
+ *   - Optional LoRa or GFSK modulation (in development)
+ *   - Optional 915MHz single channel or FHSS
+ *   - Auto-adjusting power gain
  * - 4 programmable high-current pyro outputs with continuity checks
  * - Captures high-rate data at approximately 50,000 data points per second on SD card
  *   - 1000Hz 3-axis digital 16G and 100G accelerometer data logging
  *   - 1000Hz 3-axis digital 2000dps gyroscope data logging
- *   - 1000Hz of flight events & continuity data logging
+ *   - 1000Hz of 21 flight events & continuity data logging on 4 pyros
  *   - 1000Hz of sensor-fused speed & altitude
- *   - 100Hz of roll, pitch, yaw rotation
+ *   - 100Hz of roll, pitch, yaw, and combined pitch-yaw 3D rotation
  *   - 40Hz of magnetic data logging and magnetic roll
- *   - 30Hz-100Hz of digital barometric data logging 
+ *   - 30Hz-100Hz of digital barometric data logging (data rate is chip-dependent)
  *   - 30Hz of main battery voltage (1000Hz during pyro events)
  *   - 20Hz of LoRa telemetry output (time, event, acceleration, speed, altitude, rotation, GNSS altitude, GNSS position, signal strength, packet number)
  *   - 5Hz-25Hz of GNSS data logging (chip-dependent data rates & constellations)
@@ -31,7 +35,6 @@
  *   - Optional Audible Battery Voltage report at startup
  *   - Optional Magnetic Switch Startup & Shutdown
  *   - Preflight audible reporting options: Perfectflight or Marsa
- *   - User-selectable frequency & power settings for telemetry
  *   - 8 configurable servo outputs (4 powered, 4 unpowered)
  *   - User-selectable inflight brownout recovery
  *   - User-selectable active stabilization for roll, pitch, and yaw correction
@@ -43,12 +46,13 @@
  * - Audible pre-flight continuity report
  * - Audible Post-flight max altitude & speed report
  * - Mount in any orientation with automatic orientation detection during calibration
- * - Bench-test mode activated with tactile button
+ * - Bench-test mode activated with tactile button; user-configurable status messages over USB Serial
  * - Built-in self-calibration mode
  * - Report in SI or Metric units
  * - Compatible with Teensy 3.2, 3.5, 3.6, 4.0, 4.1
- *   - Compatible with many different sensors over I2C or SPI
- *   - GPS can be wired to any available HW Serial port (Ublox M6, M7, M8, M9 supported)
+ *   - Compatible with any sensor over I2C or SPI: optimized drivers support specific sensors, external libraries can be used for unsupported devices
+ *   - Configurable GPIO pins and hardware I2C/SPI bus options
+ *   - GNSS receiver can be wired to any available HW Serial port (UBLOX chipsets & Adafruit Ultimate GPS supported, or use an external library)
  *
  * @section changelog Change Log
  * - V4_0_0 combines all previous versions coded for specific hardware setups
@@ -76,12 +80,15 @@
  * - V4_5_4 fixes a bug in the sensor timing that reduced the effective data capture rate
  * - V4_5_5 removes launch detection user options since the algorithm is proven reliable, fixes a timing bug with the barometers, makes GPS configuration code more portable, adds LPS25H support, fixes bugs with LSM6DS33 and LIS3MDL
  * - V4_6_0 improves portability of quaternion rotation code, adds MPU6050 support, fixed calibration routine bug, cleaned up some of the GPS data processing, corrected major bug in high-G moving average
+ * - V4_7_0 adds support for any sensor with an external library, fixes a major bug that caused intermittent resetting when moving up the rail, breaks sensor management out into its own file, cleans up some of the structs, adds LSM6DSOX support, fixes more LIS3MDL bugs
+ * - V4_7_1 uses polymorphisms for the sensor function calls, cleans up some of the radio function calls, adds fault indication if a critical sensor fails, fixes a GNSS output to serial monitor bug, adds LSM6DS3TR support, fixes a beeper bug on Teensy 4.1
+ * - V4_7_2 applies a new telemetry packet scheme to increase efficiency, fixes an LSM6DS3TR bug in the accelerometer output, reduces motor shutdown detection time to better detect apogee after skywriting or motor failure, adds an alarm when pyros can be actively fired, fixes bugs in the beeping routine, adds file rename functionality
  *
  * @section future_upgrades Future Upgrades
  * - Active Stabilization (started)
  * - Return-to-Base capability (started)
  * - 3D position physics model
- * - Remote Arm & Shutdown Commands over LoRa
+ * - Remote Arm & Shutdown Commands over telemetry
  * - Ground Station Bluetooth Datalink to smartphone (started)
  * - Smartphone App
  *
@@ -99,15 +106,17 @@
 #include <TinyGPS++.h>
 #include <PWMServo.h>
 #include <SPI.h>
+#include <string.h>
+#include "declarations.h"
+
 // Teensy 3.X
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__MK20DX256__)
 // i2c_t3 is needed to enable the different pin options of bus0
 #include <i2c_t3.h>
-// NOTE: typedef declarations must be in the main file and not the tabs
+// NOTE: typedef declarations must be in the main file and not the .h file or tabs
 typedef i2c_t3 TwoWire;
-#endif
 // Teensy 4.X
-#if defined(__IMXRT1062__)
+#else
 #include <Wire.h>
 #endif
 
@@ -116,6 +125,7 @@ HardwareSerial *HWSERIAL;
 
 // GPS Setup
 TinyGPSPlus GPS;
+bool restoreDefaults = false;
 
 // Servo Setup
 PWMServo canardYaw1;
@@ -128,754 +138,25 @@ PWMServo actionServo7;
 PWMServo actionServo8;
 
 // Timer for the radio
+#if defined(STM32_CORE_VERSION)
+#if defined(TIM1)
+TIM_TypeDef *Instance = TIM1;
+#else
+TIM_TypeDef *Instance = TIM2;
+#endif
+HardwareTimer *radioTimer = new HardwareTimer(Instance);
+HardwareTimer *syncTimer = new HardwareTimer(Instance);
+#else
 IntervalTimer radioTimer;
 IntervalTimer syncTimer;
+#endif
 
 // GLOBAL VARIABLES
 //-----------------------------------------
 // Set code version
 //-----------------------------------------
-const float codeVersion = 4.6;
-//-----------------------------------------
-// EEPROM allocation
-//-----------------------------------------
-struct
-{
-  int maxFltAlt = 0;  // 00-05: maximum altitude of last flight
-  int accelBiasX = 6; // 06-11: accel.bias(X,Y,Z)
-  int accelBiasY = 8;
-  int accelBiasZ = 10;
-  int highGbiasX = 12; // 12-17: highG.bias(X,Y,Z)
-  int highGbiasY = 14;
-  int highGbiasZ = 16;
-  int magBiasX = 18; // 18-23: mag.bias(X,Y,Z)
-  int magBiasY = 20;
-  int magBiasZ = 22;
-  int accelXsign = 24; // 24-29: accelerometer to world orientation (x-sign,x-pointer,y-sign,y-pointer,z-sign,z-pointer)
-  int accelXptr = 25;
-  int accelYsign = 26;
-  int accelYptr = 27;
-  int accelZsign = 28;
-  int accelZptr = 29;
-  int gyroXsign = 30; // 30-35: gyro to world orientation (x-sign,x-pointer,y-sign,y-pointer,z-sign,z-pointer)
-  int gyroXptr = 31;
-  int gyroYsign = 32;
-  int gyroYptr = 33;
-  int gyroZsign = 34;
-  int gyroZptr = 35;
-  int magXsign = 36; // 36-41: magnetometer to world orientation (x-sign,x-pointer,y-sign,y-pointer,z-sign,z-pointer)
-  int magXptr = 37;
-  int magYsign = 38;
-  int magYptr = 39;
-  int magZsign = 40;
-  int magZptr = 41;
-  int highGxSign = 42; // 42-47: highG to world orientation (x-sign,x-pointer,y-sign,y-pointer,z-sign,z-pointer)
-  int highGxPtr = 43;
-  int highGySign = 44;
-  int highGyPtr = 45;
-  int highGzSign = 46;
-  int highGzPtr = 47;
-  int accel2boardXaxis = 48; // 48-53: accelerometer to main board orientation (x-sign,x-axis,y-sign,y-axis,z-sign,z-axis)
-  int accel2boardXsign = 49;
-  int accel2boardYaxis = 50;
-  int accel2boardYsign = 51;
-  int accel2boardZaxis = 52;
-  int accel2boardZsign = 53;
-  int gyro2boardXaxis = 54; // 54-59: gyro to main board orientation (x-sign,x-axis,y-sign,y-axis,z-sign,z-axis)
-  int gyro2boardXsign = 55;
-  int gyro2boardYaxis = 56;
-  int gyro2boardYsign = 57;
-  int gyro2boardZaxis = 58;
-  int gyro2boardZsign = 59;
-  int mag2boardXaxis = 60; // 60-65: magnetometer to main board orientation (x-sign,x-axis,y-sign,y-axis,z-sign,z-axis)
-  int mag2boardXsign = 61;
-  int mag2boardYaxis = 62;
-  int mag2boardYsign = 63;
-  int mag2boardZaxis = 64;
-  int mag2boardZsign = 65;
-  int highG2boardXaxis = 66; // 66-71: high-G accelerometer to main board orientation (x-sign,x-axis,y-sign,y-axis,z-sign,z-axis)
-  int highG2boardXsign = 67;
-  int highG2boardYaxis = 68;
-  int highG2boardYsign = 69;
-  int highG2boardZaxis = 70;
-  int highG2boardZsign = 71;
-  int accelBusType = 72; // 72-93: device bus info
-  int accelBusNum = 73;
-  int gyroBusType = 74;
-  int gyroBusNum = 75;
-  int magBusType = 76;
-  int magBusNum = 77;
-  int highGBusType = 78;
-  int highGBusNum = 79;
-  int baroPressOffset = 80; // 80-83 : barometer pressure offset, stays in this position so I don't have to recalibrate all my flight computers
-  int baroTempOffset = 84;  // 84-87  : barometer temperature offset, stays in this position so I don't have to recalibrate all my flight computers
-  int baroBusType = 88;
-  int baroBusNum = 89;
-  int radioBusType = 90;
-  int radioBusNum = 91;
-  int sdBusType = 92;
-  int sdBusNum = 93;
-  int gpsBusType = 94;
-  int gpsBusNum = 95;
-  int pyro1ContPin = 96;  // 96     : Pyro 1 Continuity Pin
-  int pyro1FirePin = 97;  // 97     : Pyro 1 Fire Pin
-  int pyro2ContPin = 98;  // 98     : Pyro 2 Continuity Pin
-  int pyro2FirePin = 99;  // 98     : Pyro 2 Fire Pin
-  int pyro3ContPin = 100; // 100   : Pyro 3 Continuity Pin
-  int pyro3FirePin = 101; // 101   : Pyro 3 Fire Pin
-  int pyro4ContPin = 102;   // 102   : Pyro 4 Continuity Pin
-  int pyro4FirePin = 103;   // 103   : Pyro 4 Fire Pin
-  int nullPin = 104;        // 104        : Null Continuity / Fire Pin
-  int beepPin = 105;        // 105        : Beeper Pin
-  int battReadPin = 106;    // 106    : Battery Read Pin
-  int testModeGndPin = 107; // 107 : Test Mode Button Gnd Pin
-  int testModeRdPin = 108;  // 108   : Test Mode Read Pin
-  int radioCSpin = 109;     // 109     : radio CS pin
-  int radioIRQpin = 110;    // 110    : radio interrupt pin
-  int radioRstPin = 111;    // 111    : radio reset pin
-  int radioEnPin = 112;     // 112     : radio enable pin (optional w/ Adafruit breakout only)
-  int accelCSpin = 113;
-  int gyroCSpin = 114;
-  int magCSpin = 115;
-  int highGcsPin = 116;
-  int sdCSpin = 117;
-  int baroCSpin = 118;
-  int servo1pin = 119; // 119   : servo 1 control pin
-  int servo2pin = 120; // 120   : servo 2 control pin
-  int servo3pin = 121; // 121   : servo 3 control pin
-  int servo4pin = 122; // 122   : servo 4 control pin
-  int servo5pin = 123; // 123   : servo 5 control pin
-  int servo6pin = 124; // 124   : servo 6 control pin
-  int servo7pin = 125; // 125   : servo 7 control pin
-  int servo8pin = 126; // 126   : servo 8 control pin
-  int accelID = 127;   // 127   : Sensor ID accel
-  int gyroID = 128;    // 128   : Sensor ID gyro
-  int highGID = 129;   // 129   : Sensor ID highG
-  int baroID = 130;    // 130   : Sensor ID baro
-  int radioID = 131;   // 131   : Sensor ID Radio
-  int GPSID = 132;     // 132   : Sensor ID GPS
-  int magID = 133;
-  int sdID = 134;
-  int HWversion = 135;
-  int HWsubVersion = 136;
-  int HWunitNum = 137;
-  int callSign = 138; // 138-143: Ham Radio Callsign
-  //-------------------------------------------------------------
-  // flight settings stored in EEPROM to facilitate rapid recovery
-  //-------------------------------------------------------------
-  int rocketName = 144; // Maximum of 20 characters
-  int fltProfile = 164;
-  int units = 165;
-  int reportStyle = 166;
-  int setupTime = 167;         // 4
-  int gTrigger = 171;          // 2
-  int detectLiftoffTime = 173; // 4
-  int mainDeployAlt = 177;     // 2
-  int rcdTime = 179;           // 4
-  int apogeeDelay = 183;
-  int silentMode = 184;
-  int magSwitchEnable = 185;
-  int inflightRecover = 186;
-  int gpsLogFile = 187;
-  int fireTime = 188; // 4
-  int pyro4Func = 192;
-  int pyro3Func = 193;
-  int pyro2Func = 194;
-  int pyro1Func = 195;
-  int TXenable = 196;
-  int TXpwr = 197;
-  int TXfreq = 198; // 4
-  int FHSS = 202;
-  int boosterSeparationDelay = 203; // 4
-  int sustainerFireDelay = 207;     // 4
-  int airStart1Event = 211;
-  int airStart1Delay = 212; // 4
-  int airStart2Event = 216;
-  int airStart2Delay = 217; // 2
-  int altThreshold = 219;   // 2
-  int maxAngle = 221;
-  int stableRotn = 222;
-  int stableVert = 223;
-  int flyback = 224;
-  int serialDebug = 225;
-  int lastFile = 226; // 2
-  int baseAlt = 228;  // 4
-  int lastEvent = 232;
-  //-------------------------------------------------------------
-  // active stabilization parameters
-  //-------------------------------------------------------------
-  int servo1trim = 233;
-  int servo2trim = 234;
-  int servo3trim = 235;
-  int servo4trim = 236;
-  int servo5trim = 237;
-  int servo6trim = 238;
-  int servo7trim = 239;
-  int servo8trim = 240;
-  int Kp = 241; // 4
-  int Ki = 245; // 4
-  int Kd = 249; // 4
-} eeprom;
-//-----------------------------------------
-// Sensor device data
-//-----------------------------------------
-struct
-{
-  byte accel = 0;
-  byte mag = 0;
-  byte gyro = 0;
-  byte highG = 0;
-  byte baro = 0;
-  byte radio = 0;
-  byte GPS = 0;
-  char accelBusType;
-  byte accelBusNum;
-  char gyroBusType;
-  byte gyroBusNum;
-  char magBusType;
-  byte magBusNum;
-  char baroBusType;
-  byte baroBusNum;
-  char highGBusType;
-  byte highGBusNum;
-  char radioBusType;
-  byte radioBusNum;
-  char gpsBusType;
-  byte gpsBusNum;
-  char sdBusType;
-  byte sdBusNum;
-  boolean status_LSM303 = false;
-  boolean status_LSM9DS1 = false;
-  boolean status_LSM6DS33 = false;
-  boolean status_L3GD20H = false;
-  boolean status_MPU6050 = false;
-  boolean status_LIS3MDL = false;
-  boolean status_MS5611 = false;
-  boolean status_MS5607 = false;
-  boolean status_MPL3115A2 = false;
-  boolean status_BMP180 = false;
-  boolean status_BMP280 = false;
-  boolean status_BMP388 = false;
-  boolean status_LPS25H = false;
-  boolean status_H3LIS331DL = false;
-  boolean status_ADS1115 = false;
-  boolean status_ADXL377 = false;
-  boolean status_RFM96W = false;
-  boolean status_NoHighGAccel = false;
-  boolean pyroPWM = false;
-} sensors;
-//-----------------------------------------
-// Sensor variables
-//-----------------------------------------
-byte rawData[14];
-typedef struct
-{
-  byte addr;
-  int16_t ADCmax;
-  float gainX;
-  float gainY;
-  float gainZ;
-  int16_t rawX;
-  int16_t rawY;
-  int16_t rawZ;
-  int8_t dirX;
-  int8_t dirY;
-  int8_t dirZ;
-  char orientX;
-  char orientY;
-  char orientZ;
-  int16_t *ptrX;
-  int16_t *ptrY;
-  int16_t *ptrZ;
-  int8_t *ptrXsign;
-  int8_t *ptrYsign;
-  int8_t *ptrZsign;
-  int32_t sumX0 = 0L;
-  int32_t sumY0 = 0L;
-  int32_t sumZ0 = 0L;
-  int16_t x0;
-  int16_t y0;
-  int16_t z0;
-  int16_t x;
-  int16_t y;
-  int16_t z;
-  int16_t biasX;
-  int16_t biasY;
-  int16_t biasZ;
-  uint32_t timeLastSamp = 0UL;
-  uint32_t timeBtwnSamp = 10000UL;
-  boolean newSamp = false;
-} sensorData;
-sensorData accel;
-sensorData mag;
-sensorData gyro;
-sensorData highG;
-//-----------------------------------------
-// User Settings
-//-----------------------------------------
-struct
-{
-  bool testMode = false;
-  bool calibrationMode = false;
-  //--------flight settings----------------
-  char rocketName[20] = ""; // Maximum of 20 characters
-  char HWid[7] = "";
-  char fltProfile = 'S';
-  char units = 'S';
-  char reportStyle = 'P';
-  bool GPSfile = false;
-  unsigned long setupTime = 5000000UL;
-  float mainDeployAlt = 153;             // Up to 458m for main deploy
-  unsigned long rcdTime = 900000000UL;   // 15min
-  unsigned long apogeeDelay = 1000000UL; // 1.0s apogee delay
-  bool silentMode = false;               // true turns off beeper
-  bool magSwitchEnable = false;
-  byte inflightRecover = 0;
-  bool GPSlog = false;
-  byte serialDebug = 1;
-  //--------pyro settings----------------
-  unsigned long fireTime = 500000UL; // 0.5s
-  char pyro4Func = 'M';
-  char pyro3Func = 'A';
-  char pyro2Func = 'N';
-  char pyro1Func = 'N';
-  //--------telemetry settings----------------
-  char callSign[7] = "";
-  bool TXenable = true; // false turns off radio transmissions
-  byte TXpwr = 13;
-  float TXfreq = 433.250;
-  bool FHSS = false;
-  //--------2 stage settings----------------
-  unsigned long boosterSeparationDelay = 500000UL; // 0.5s
-  unsigned long sustainerFireDelay = 1000000UL;    // 1.0s
-  //--------airstart settings----------------
-  char airStart1Event = 'B';
-  unsigned long airStart1Delay = 500000UL;
-  char airStart2Event = 'B';
-  unsigned long airStart2Delay = 500000UL;
-  //-------safety thresholds----------------
-  int altThreshold = 120; // 120m = 400ft
-  int maxAngle = 45;      // degrees
-  //-------active stabilization----------------
-  bool stableRotn = false;
-  bool stableVert = false;
-  //----------flyback option--------------------
-  bool flyBack = false;
-} settings;
-//-----------------------------------------
-// GPIO pin mapping
-//-----------------------------------------
-struct
-{
-  uint8_t nullCont;
-  uint8_t nullFire;
-  uint8_t beep;
-  uint8_t testGnd;
-  uint8_t testRead;
-  uint8_t mag;
-  uint8_t batt;
-  uint8_t pyro1Cont;
-  uint8_t pyro1Fire;
-  uint8_t pyro2Cont;
-  uint8_t pyro2Fire;
-  uint8_t pyro3Cont;
-  uint8_t pyro3Fire;
-  uint8_t pyro4Cont;
-  uint8_t pyro4Fire;
-  uint8_t radioCS;
-  uint8_t radioIRQ;
-  uint8_t radioRST;
-  uint8_t radioEN;
-  uint8_t servo1;
-  uint8_t servo2;
-  uint8_t servo3;
-  uint8_t servo4;
-  uint8_t servo5;
-  uint8_t servo6;
-  uint8_t servo7;
-  uint8_t servo8;
-  uint8_t accelCS;
-  uint8_t gyroCS;
-  uint8_t magCS;
-  uint8_t highG_CS;
-  uint8_t baroCS;
-  uint8_t SD_CS;
-  uint8_t firePin = 0;
-} pins;
-//-----------------------------------------
-// pyro variables
-//-----------------------------------------
-typedef struct
-{
-  char func;
-  bool fireStatus = false;
-  bool contStatus = false;
-  unsigned long fireStart;
-  uint8_t contPin;
-  uint8_t firePin;
-} pyroMap;
-pyroMap pyro1;
-pyroMap pyro2;
-pyroMap pyro3;
-pyroMap pyro4;
-//-----------------------------------------
-// radio variables
-//-----------------------------------------
-uint8_t dataPacket[77];
-bool liftoffSync = false;
-unsigned long TXstartTime;
-bool syncFreq = false;
-uint8_t pktPosn = 0;
-uint16_t sampNum = 0;
-uint8_t packetSamples = 4;
-bool gpsTransmit = false;
-bool TX = false;
-bool SDradioTX = false;
-uint8_t radioMode;
-volatile boolean clearTX = false;
-volatile boolean sendPkt = false;
-volatile boolean syncFlag = false;
-struct
-{
-  uint32_t preLiftoff = 1000000UL;
-  uint32_t inflight = 50000UL;
-  uint32_t postFlight = 10000000UL;
-} pktInterval;
-struct
-{
-  int16_t packetnum = 0;
-  uint8_t event = 0;
-  uint16_t fltTime = 0;
-  int16_t baseAlt = 0;
-  int16_t alt = 0;
-  int16_t accel = 0;
-  int16_t vel = 0;
-  int16_t roll = 0;
-  int16_t offVert = 0;
-  int16_t maxAlt = 0;
-  int16_t maxVel = 0;
-  int16_t maxGPSalt = 0;
-  int16_t maxG = 0;
-  int16_t GPSalt = 0;
-  int16_t satNum = 0;
-  bool pktCallsign = false;
+const float codeVersion = 4.72;
 
-} radio;
-//-----------------------------------------
-// flight events
-//-----------------------------------------
-typedef struct
-{
-  bool preLiftoff = true;
-  bool inFlight = false;
-  bool postFlight = false;
-  bool liftoff = false;
-  bool falseLiftoffCheck = true;
-  bool boosterBurnout = false;
-  bool boosterBurnoutCheck = false;
-  bool boosterSeparation = false;
-  bool sustainerFireCheck = false;
-  bool sustainerFire = false;
-  bool sustainerIgnition = false;
-  bool sustainerBurnout = false;
-  bool airStart1Check = false;
-  bool airStart1Fire = false;
-  bool airStart1Ignition = false;
-  bool airStart1BurnoutCheck = false;
-  bool airStart1Burnout = false;
-  bool airStart2Check = false;
-  bool airStart2Fire = false;
-  bool airStart2Ignition = false;
-  bool airStart2BurnoutCheck = false;
-  bool airStart2Burnout = false;
-  bool apogee = false;
-  bool apogeeFire = false;
-  bool apogeeSeparation = false;
-  bool mainDeploy = false;
-  bool touchdown = false;
-  bool timeOut = false;
-} eventList;
-eventList events;
-eventList resetEvents;
-//-----------------------------------------
-// Master timing variables
-//-----------------------------------------
-typedef struct
-{
-  unsigned long liftoff = 0UL;
-  unsigned long detectLiftoffTime = 500000UL; // 0.5s
-  unsigned long boosterBurnout = 0UL;
-  unsigned long boosterSeparation = 0UL;
-  unsigned long sustainerFireCheck = 0UL;
-  unsigned long sustainerFire = 0UL;
-  unsigned long sustainerIgnition = 0UL;
-  unsigned long sustainerBurnout = 0UL;
-  unsigned long airStart1Check = 0UL;
-  unsigned long airStart1Fire = 0UL;
-  unsigned long airStart1Ignition = 0UL;
-  unsigned long airStart1BurnoutCheck = 0UL;
-  unsigned long airStart1Burnout = 0UL;
-  unsigned long airStart2Check = 0UL;
-  unsigned long airStart2Fire = 0UL;
-  unsigned long airStart2Ignition = 0UL;
-  unsigned long airStart2BurnoutCheck = 0UL;
-  unsigned long airStart2Burnout = 0UL;
-  unsigned long apogee = 0UL;
-  unsigned long apogeeFire = 0UL;
-  unsigned long apogeeSeparation = 0UL;
-  unsigned long mainDeploy = 0UL;
-  unsigned long touchdown = 0UL;
-  unsigned long padTime = 0UL;
-  unsigned long tmClock = 0UL;
-  unsigned long tmClockPrev = 0UL;
-  unsigned long timeCurrent = 0UL;
-  unsigned long dt = 0UL;
-} timerList;
-timerList fltTime;
-timerList resetFltTime;
-//-----------------------------------------
-// continuity Booleans
-//-----------------------------------------
-struct
-{
-  bool apogee;
-  bool main;
-  bool boosterSep;
-  bool upperStage;
-  bool airStart1;
-  bool airStart2;
-  bool noFunc;
-  bool error;
-  uint8_t reportCode;
-  uint8_t beepCode;
-} cont;
-//-----------------------------------------
-// Non-Event Booleans
-//-----------------------------------------
-bool rotnOK = true;
-bool altOK = false;
-bool beep = false;
-bool pyroFire = false;
-bool fileClose = false;
-unsigned long boosterBurpTime = 1000000UL;
-float unitConvert = 3.2808F;
-//-----------------------------------------
-// digital accelerometer variables
-//-----------------------------------------
-int g = 1366;
-float accelNow;
-float maxG = 0.0;
-int gTrigger = 3415; // 2.5G trigger
-//-----------------------------------------
-// High-G accelerometer variables
-//-----------------------------------------
-bool startADXL377 = false;
-int high1G = 63;
-bool filterFull = false;
-long highGsum = 0L;
-int highGfilter[30] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t sizeHighGfilter = 30;
-uint8_t filterPosn = 0;
-float highGsmooth;
-union
-{
-  int16_t calValue;
-  uint8_t calByte[2];
-} calUnion;
-//-----------------------------------------
-// Altitude & Baro Sensor variables
-//-----------------------------------------
-struct
-{
-  float rawAlt = 0.0F;
-  float Alt = 0.0F;
-  float baseAlt = 10.0F;
-  float maxAlt = 0.0F;
-  float smoothAlt = 0.0F;
-  float Vel = 0.0F;
-  float maxVel = 0.0F;
-  float pressure;
-  float temperature;
-  unsigned long timeLastSamp = 0UL;
-  unsigned long timeBtwnSamp = 50000UL;
-  bool newSamp = false;
-  bool newTemp = false;
-  float seaLevelPressure = 1013.25;
-  float tempOffset;
-  float pressOffset;
-} baro;
-//-----------------------------------------
-// Baro Reporting Variables
-//-----------------------------------------
-uint8_t baroTouchdown = 0;
-uint8_t touchdownTrigger = 5;
-float pressureAvg = 0;
-float pressureAvg5[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
-float pressureSum = 0.0;
-uint8_t pressurePosn = 0;
-//-----------------------------------------
-// Magnetometer Variables
-//-----------------------------------------
-int16_t magTrigger = 0;
-uint8_t magCalibrateMode = 0;
-long magRoll = 0UL;
-int magOffVert = 0;
-int magPitch = 0;
-int magYaw = 0;
-//-----------------------------------------
-// gyro & rotation variables
-//-----------------------------------------
-long dx = 0L;
-long dy = 0L;
-long dz = 0L;
-float yawY0;
-float pitchX0;
-int pitchX;
-int yawY;
-long rollZ = 0;
-const float mlnth = 0.000001;
-int offVert = 0;
-bool rotationFault = false;
-//-----------------------------------------
-// Rotation timing variables
-//-----------------------------------------
-unsigned long lastRotn = 0UL;     // time of the last call to update the rotation
-unsigned long rotnRate = 10000UL; // 100 updates per second
-//-----------------------------------------
-// velocity calculation variables
-//-----------------------------------------
-float accelVel = 0.0F;
-float accelAlt = 0.0F;
-float maxVelocity = 0.0F;
-float fusionVel = 0.0F;
-float fusionAlt = 0.0F;
-float thresholdVel = 44.3F;
-//-----------------------------------------
-// beeper variables
-//-----------------------------------------
-uint8_t beep_counter = 0;
-uint8_t beepPosn = 0;
-unsigned long beep_delay = 100000UL;
-int beepCode = 0;
-unsigned long beep_len = 100000UL;
-unsigned long timeBeepStart;
-unsigned long timeLastBeep;
-bool beepAlt = false;
-bool beepVel = false;
-bool beepCont = true;
-bool beepAlarm = false;
-const unsigned long short_beep_delay = 100000UL;
-const unsigned long long_beep_delay = 800000UL;
-const unsigned long alarmBeepDelay = 10000UL;
-const unsigned long alarmBeepLen = 10000UL;
-const unsigned long medBeepLen = 100000UL;
-const unsigned long shortBeepLen = 10000UL;
-//-----------------------------------------
-// SD card writing variables
-//-----------------------------------------
-uint32_t writeStart;
-uint32_t writeTime;
-uint32_t maxWriteTime;
-uint32_t writeThreshold = 10000UL;
-uint32_t writeThreshCount = 0UL;
-int strPosn = 0;
-bool syncApogee = false;
-bool syncMains = false;
-const byte decPts = 2;
-const byte base = 10;
-char dataString[1024];
-uint8_t maxAltDigits[6];
-uint8_t maxVelDigits[4];
-uint8_t voltageDigits[2];
-uint8_t altDigits = 6;
-uint8_t velDigits = 4;
-uint8_t n = 1;
-float voltage = 0.0F;
-bool writeVolt = false;
-unsigned long voltRate = 33333UL;
-uint16_t voltReading;
-unsigned long lastVolt = 0UL;
-bool reportCode = true; // true = report max altitude, false = report max velocity
-uint8_t postFlightCode = 0;
-float adcConvert = 0.000015259;
-const char cs = ',';
-//-----------------------------------------
-// GPS Variables
-//-----------------------------------------
-typedef struct GNSSeventData
-{
-  float latitude;
-  float longitude;
-  float alt = 0.0;
-  int year;
-  uint8_t month;
-  uint8_t day;
-  uint8_t hour;
-  uint8_t minute;
-  uint8_t second;
-  uint8_t mili;
-} eventData;
-struct
-{
-  float alt = 0.0;
-  float maxAlt = 0.0;
-  float baseAlt = 0.0;
-  float vel = 0.0F;
-  float latitude;
-  float longitude;
-  float avgAlt[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
-  float altBuff[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
-  uint32_t timeBuff[5] = {0UL, 0UL, 0UL, 0UL, 0UL};
-  bool bufferFull = false;
-  float altSum = 0.0;
-  uint8_t bufferPosn = 0;
-  uint8_t altPosn = 0;
-  eventData liftoff;
-  eventData apogee;
-  eventData touchdown;
-  uint8_t fix = 0;
-  uint16_t fixCount = 0;
-  unsigned long timeLastFix = 0UL;
-  bool SDwrite = false;
-  bool configDefaults = false;
-  bool configFlight = false;
-  bool configPwrSave = false;
-} gnss;
-//-----------------------------------------
-// EEPROM useful unions
-//-----------------------------------------
-union
-{
-  unsigned long val;
-  byte Byte[4];
-} ulongUnion;
-union
-{
-  int val;
-  byte Byte[2];
-} intUnion;
-union
-{
-  float val;
-  byte Byte[4];
-} floatUnion;
-//-----------------------------------------
-// Active Stabilization
-//-----------------------------------------
-char userInput;
-int8_t servo1trim = 0;
-int8_t servo2trim = 0;
-int8_t servo3trim = 0;
-int8_t servo4trim = 0;
-int8_t servo5trim = 0;
-int8_t servo6trim = 0;
-int8_t servo7trim = 0;
-int8_t servo8trim = 0;
-const uint32_t controlInterval = 50000UL;
-uint32_t timeLastControl = 0UL;
-float Kp = 0.0F;
-float Ki = 0.0F;
-float Kd = 0.0F;
 //-----------------------------------------
 // Bus Variables
 //-----------------------------------------
@@ -888,7 +169,7 @@ typedef struct
   uint8_t i2cAddress;
   SPIClass *spi = &SPI;
   SPISettings spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
-  byte cs;
+  uint8_t cs;
   uint8_t writeMask = 0x00;
   uint8_t readMask = 0x00;
   uint8_t incMask = 0x00;
@@ -901,66 +182,6 @@ _bus baroBus;
 _bus radioBus;
 _bus sdBus;
 _bus *activeBus;
-//-----------------------------------------
-// debug
-//-----------------------------------------
-boolean GPSecho = false;
-boolean radioDebug = false;
-boolean TXdataFile = true;
-//--------------------------------------------
-// Radio event codes to eliminate magic numbers
-//--------------------------------------------
-enum
-{
-  Preflight = 0,
-  Liftoff = 1,
-  Booster_Burnout = 2,
-  Apogee = 3,
-  Fire_Apogee = 4,
-  Separation = 5,
-  Fire_Mains = 6,
-  Under_Chute = 7,
-  Eject_Booster = 8,
-  Fire_Sustainer = 9,
-  Sustainer_Ignition = 10,
-  Sustainer_Burnout = 11,
-  Fire_Airstart1 = 12,
-  Airstart1_Ignition = 13,
-  Airstart1_Burnout = 14,
-  Fire_Airstart2 = 15,
-  Airstart2_Ignition = 16,
-  Airstart2_Burnout = 17,
-  NoFire_Rotn_Limit = 18,
-  NoFire_Alt_Limit = 19,
-  NoFire_RotnAlt_Limit = 20,
-  Booster_Apogee = 21,
-  Fire_Booster_Apogee = 22,
-  Booster_Separation = 23,
-  Fire_Booster_Mains = 24,
-  Booster_Under_Chute = 25,
-  Time_Limit = 26,
-  Touchdown = 27,
-  Power_Loss_Restart = 28,
-  Booster_Touchdown = 29,
-  Booster_Preflight = 30,
-  Booster_Time_Limit = 31,
-  Booster_Power_Loss = 32
-};
-//--------------------------------------------
-// Radio operating modes (RegOpMode)
-//--------------------------------------------
-enum
-{
-  SleepMode = 0x00,
-  StandbyMode = 0x01,
-  TXmode = 0x03,
-  RXmode = 0x05,
-  CADmode = 0x07,
-  LoRaMode = 0x80,
-  LowFrqMode = 0x08, // LowFrq mode enables registers below 860MHz
-  writeMask = 0x80
-};
-uint8_t radioFnctn = SleepMode;
 
 // any routines called in the main flight loop need to be as fast as possible, so set them as "always inline" for the compiler
 inline void checkEvents(void) __attribute__((always_inline));
@@ -987,26 +208,17 @@ void setup(void)
 {
 
   Serial.begin(38400);
-  if (sensors.GPS == 4)
-  {
-    Serial.begin(57600);
-  }
 
   delay(500);
 
   // check to see if we are restarting from a powerloss
   // if so, then we need to rapidly get the system back up and going
   // call the rapidReset routine and immediately exit void setup
-  byte lastEvent = EEPROM.read(eeprom.lastEvent);
+  uint8_t lastEvent = EEPROM.read(eeprom.lastEvent);
   if (lastEvent != 27)
   {
     EEPROM.update(eeprom.lastEvent, 27);
     lastEvent = 27;
-  }
-  if (lastEvent == (byte)255)
-  {
-    lastEvent = 27;
-    EEPROM.update(eeprom.lastEvent, lastEvent);
   }
   settings.inflightRecover = EEPROM.read(eeprom.inflightRecover);
   if (settings.inflightRecover > 0 && (lastEvent < 24 && lastEvent != 6 && lastEvent != 7))
@@ -1024,6 +236,8 @@ void setup(void)
 
   // Start SD card
   beginSD();
+
+  // if an EEPROM settings file exists on the SD card, read it and store it into EEPROM
   parseEEPROMsettingsSD();
 
   // Read pin settings from EEPROM
@@ -1067,14 +281,14 @@ void setup(void)
   sensors.highG = EEPROM.read(eeprom.highGID);
   sensors.baro = EEPROM.read(eeprom.baroID);
   sensors.radio = EEPROM.read(eeprom.radioID);
-  sensors.GPS = EEPROM.read(eeprom.GPSID);
+  sensors.GNSS = EEPROM.read(eeprom.GPSID);
   sensors.accelBusType = (char)EEPROM.read(eeprom.accelBusType);
   sensors.gyroBusType = (char)EEPROM.read(eeprom.gyroBusType);
   sensors.magBusType = (char)EEPROM.read(eeprom.magBusType);
   sensors.highGBusType = (char)EEPROM.read(eeprom.highGBusType);
   sensors.baroBusType = (char)EEPROM.read(eeprom.baroBusType);
   sensors.sdBusType = (char)EEPROM.read(eeprom.sdBusType);
-  sensors.gpsBusType = (char)EEPROM.read(eeprom.gpsBusType);
+  sensors.gnssBusType = (char)EEPROM.read(eeprom.gpsBusType);
   sensors.radioBusType = (char)EEPROM.read(eeprom.radioBusType);
   sensors.accelBusNum = EEPROM.read(eeprom.accelBusNum);
   sensors.gyroBusNum = EEPROM.read(eeprom.gyroBusNum);
@@ -1082,9 +296,9 @@ void setup(void)
   sensors.highGBusNum = EEPROM.read(eeprom.highGBusNum);
   sensors.baroBusNum = EEPROM.read(eeprom.baroBusNum);
   sensors.sdBusNum = EEPROM.read(eeprom.sdBusNum);
-  sensors.gpsBusNum = EEPROM.read(eeprom.gpsBusNum);
+  sensors.gnssBusNum = EEPROM.read(eeprom.gpsBusNum);
   sensors.radioBusNum = EEPROM.read(eeprom.radioBusNum);
-  for (byte i = 0; i < sizeof(settings.callSign); i++)
+  for (uint8_t i = 0; i < sizeof(settings.callSign); i++)
   {
     settings.callSign[i] = EEPROM.read(eeprom.callSign + i);
   }
@@ -1096,6 +310,16 @@ void setup(void)
   settings.HWid[4] = (char)EEPROM.read(eeprom.HWunitNum);
   settings.HWid[5] = '\0';
   Serial.println(F("complete!"));
+
+  // check for unitialized EEPROM
+  if (sensors.accel == 255)
+  {
+    Serial.println("WARNING: SYSTEM HARDWARE SETTINGS ARE UNITIALIZED! SYSTEM CANNOT CONTINUE UNTIL HARDWARE DEVICES, BUSES, AND PIN VALUES ARE SET");
+    Serial.println("PLEASE LOAD EEPROMsettings.txt ONTO THE SD CARD ROOT TO PROCEED");
+    while (1)
+    {
+    }
+  }
 
   // Set the mode of the output pins
   pinMode(pins.nullCont, INPUT);
@@ -1113,53 +337,18 @@ void setup(void)
   pinMode(pins.testGnd, OUTPUT);
   pinMode(pins.radioCS, OUTPUT);
   pinMode(pins.highG_CS, OUTPUT);
+  // Set the CS pins to HIGH
+  digitalWrite(pins.radioCS, HIGH);
+  digitalWrite(pins.highG_CS, HIGH);
   // Set the pyro firing pins to LOW for safety
   digitalWrite(pins.pyro1Fire, LOW);
   digitalWrite(pins.pyro2Fire, LOW);
   digitalWrite(pins.pyro3Fire, LOW);
   digitalWrite(pins.pyro4Fire, LOW);
 
-  // Set the device SPI Bus CS pins to HIGH
-  if (sensors.accelBusType == 'S')
-  {
-    pinMode(pins.accelCS, OUTPUT);
-    digitalWrite(pins.accelCS, HIGH);
-  }
-  if (sensors.gyroBusType == 'S')
-  {
-    pinMode(pins.gyroCS, OUTPUT);
-    digitalWrite(pins.gyroCS, HIGH);
-  }
-  if (sensors.magBusType == 'S')
-  {
-    pinMode(pins.magCS, OUTPUT);
-    digitalWrite(pins.gyroCS, HIGH);
-  }
-  if (sensors.highGBusType == 'S')
-  {
-    pinMode(pins.highG_CS, OUTPUT);
-    digitalWrite(pins.highG_CS, HIGH);
-  }
-  if (sensors.baroBusType == 'S')
-  {
-    pinMode(pins.baroCS, OUTPUT);
-    digitalWrite(pins.baroCS, HIGH);
-  }
-  if (sensors.sdBusType == 'S')
-  {
-    pinMode(pins.SD_CS, OUTPUT);
-    digitalWrite(pins.SD_CS, HIGH);
-  }
-  if (sensors.radioBusType == 'S')
-  {
-    pinMode(pins.radioCS, OUTPUT);
-    digitalWrite(pins.radioCS, HIGH);
-  }
-  Serial.println("Set Pins");
-
   // Start Harware Serial communication
   setHWSERIAL();
-  if (sensors.GPS == 3)
+  if (sensors.GNSS == 3)
   {
     HWSERIAL->begin(38400);
     Serial.println("Starting HWSerial at 38400 baud");
@@ -1184,22 +373,64 @@ void setup(void)
     Serial.println(F("------------------------------------------------------------"));
   }
 
-  // setup the ADC for sampling the battery and ADXL377 if present
+// setup the ADC for sampling the battery and ADXL377 if present
+#if defined(__MK66FX1M0__) || defined(__MK64FX512__) || defined(__MK20DX256__)
+  // 16 bit for Teensy3.5 and 3.6
   analogReadResolution(16);
-
-  // Start Sensors
-  Serial.println(F("Starting Sensors..."));
-  beginAccel();
-  beginGyro();
-  beginMag();
-  beginHighG();
-  beginBaro();
+#elif defined(__IMXRT1062__)
+  // 12 bit resolution for Teensy 4.0 & 4.1
+  analogReadResolution(12);
+  adcConvert = 1.0F / 4096.0F;
+  ADCmidValue = 2048;
+#endif
 
   // read the flight settings from the SD card
   readFlightSettingsSD();
 
-  // set the g-trigger
+  // set the function pointers
+  setPolyMorphs();
+
+  // Start Sensors
+  Serial.println(F("Starting Sensors..."));
+  sensors.statusAccel = beginAccel();
+  sensors.statusGyro = beginGyro();
+  sensors.statusMag = beginMag();
+  sensors.statusHighG = beginHighG();
+  sensors.statusBaro = beginBaro();
+
+  // check to see if a critical senor failed the startup test - if so, give an audible warning
+  bool sensorsOK = sensors.statusAccel & sensors.statusGyro & sensors.statusHighG & sensors.statusBaro;
+  // halt progress and give an audible warning once per second
+  if (!sensorsOK)
+  {
+    Serial.println("Sensor Failure! Cannot proceed to flight");
+  }
+  while (!sensorsOK)
+  {
+    for (uint8_t i = 0; i < 20; i++)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(12);
+      digitalWrite(pins.beep, LOW);
+      delay(13);
+    }
+    delay(1000);
+  }
+
+  // set Accelerometer G level
+  g = (int16_t)(1.0 / accel.gainX);
+  accel.gainX *= 9.80665;
+  accel.gainY *= 9.80665;
+  accel.gainZ *= 9.80665;
+
+  // set the accelerometer liftoff detection g-trigger
   gTrigger = 2.5 * g;
+
+  // set high-G accelerometer level
+  high1G = (int16_t)(1.0 / highG.gainX);
+  highG.gainX *= 9.80665;
+  highG.gainY *= 9.80665;
+  highG.gainZ *= 9.80665;
 
   // Initialize the radio
   // if the Adafruit RFM9XW board is used, make sure its on
@@ -1209,17 +440,18 @@ void setup(void)
     digitalWrite(pins.radioEN, HIGH);
   }
   // start the radio
+  sensors.statusRadio = beginRadio();
   if (settings.TXenable)
   {
-    sensors.status_RFM96W = radioBegin(pins.radioRST);
-  }
-  if (sensors.status_RFM96W)
-  {
-    Serial.println(F("RFM96W/95W OK!"));
+    beginTelemetry();
+    if (!sensors.statusRadio)
+    {
+      Serial.println(F("Radio Not Found!"));
+    }
   }
   else
   {
-    Serial.println(F("RFM96W/95W not found!"));
+    Serial.println("Radio Disabled!");
   }
 
   // safety override of user settings
@@ -1283,15 +515,15 @@ void setup(void)
   {
     settings.setupTime = 3000UL;
   } // min 3 seconds of setup time
-  if (settings.TXpwr > 20)
+  if (settings.TXpwr > 14)
   {
-    settings.TXpwr = 20;
-  }
+    settings.TXpwr = 14;
+  } // power cant exceed 14dbm on these units wher the RX/TX antenna pins are shared
   if (settings.TXpwr < 2)
   {
     settings.TXpwr = 2;
-  }
-  if (settings.FHSS && settings.TXfreq < 900)
+  } // power setting can't go below 2
+  if (settings.FHSS && settings.TXfreq < 900.000F)
   {
     settings.FHSS = false;
   } // FHSS not used on 70cm band
@@ -1299,6 +531,18 @@ void setup(void)
   {
     boosterBurpTime = min(1000000UL, settings.boosterSeparationDelay - 10000UL);
   }
+  if (settings.TXfreq < 420.000F)
+  {
+    settings.TXfreq = 421.000F;
+  } // cannot be below the 70cm band, reset to 421MHz band
+  if (settings.TXfreq > 450.000F && settings.TXfreq < 902.300F)
+  {
+    settings.TXfreq = 902.200F;
+  } // cannot be above the 70cm ham band and below 915MHz ISM band
+  if (settings.TXfreq > 928.000F)
+  {
+    settings.TXfreq = 914.900F;
+  } // cannot be above 915MHz ISM band
 
   // Update the EEPROM with the new settings
   EEPROM.update(eeprom.fltProfile, settings.fltProfile);
@@ -1326,8 +570,6 @@ void setup(void)
   }
   EEPROM.update(eeprom.silentMode, settings.silentMode);
   EEPROM.update(eeprom.magSwitchEnable, settings.magSwitchEnable);
-  // ulongUnion.val = settings.rotnCalcRate;
-  // for(byte i=0; i++; i<4){EEPROM.update(eeprom.rotnCalcRate + i, ulongUnion.Byte[i]);}
   EEPROM.update(eeprom.inflightRecover, settings.inflightRecover);
   EEPROM.update(eeprom.gpsLogFile, settings.GPSlog);
   ulongUnion.val = settings.fireTime;
@@ -1424,13 +666,12 @@ void setup(void)
     Serial.println(F("Silent Mode Confirmed"));
   }
 
-  // setup the radio
+  // setup the radio, default 70cm band
   if (settings.TXenable)
   {
     // 915MHz FHSS
     if (settings.FHSS)
     {
-      pktInterval.preLiftoff = 600000UL;
       if (settings.testMode)
       {
         Serial.println("FHSS Active!");
@@ -1466,7 +707,7 @@ void setup(void)
     }
     if (sensors.radio != 0)
     {
-      radioSetMode(SleepMode);
+      radioSleep();
       digitalWrite(pins.radioCS, HIGH);
     }
     if (settings.testMode)
@@ -1604,7 +845,7 @@ void setup(void)
       }
 
       // starts the beep
-      if (!beep && fltTime.tmClock - timeLastBeep > beep_delay)
+      if (!beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
       {
         digitalWrite(pins.beep, HIGH);
         timeBeepStart = fltTime.tmClock;
@@ -1617,7 +858,7 @@ void setup(void)
       {
         digitalWrite(pins.beep, LOW);
         timeBeepStart = 0UL;
-        timeLastBeep = fltTime.tmClock;
+        timeLastBeepEnd = fltTime.tmClock;
         beep = false;
       }
     } // end while
@@ -1625,7 +866,7 @@ void setup(void)
     // Reset variables
     beep_counter = 0;
     timeBeepStart = 0UL;
-    timeLastBeep = 0UL;
+    timeLastBeepEnd = 0UL;
     fltTime.tmClock = 0UL;
     if (!settings.calibrationMode)
     {
@@ -1644,12 +885,8 @@ void setup(void)
   {
     magCalibrate();
   }
-
-  // Decrease magnetometer gain to eliminate false positives if the magnetic switch is enabled
-  if (settings.magSwitchEnable == 1)
-  {
-    resetMagGain();
-  }
+  // set the trigger for the magnetic switch
+  magTrigger = 3000;
 
   // read the bias from EEPROM
   calUnion.calByte[0] = EEPROM.read(eeprom.accelBiasX);
@@ -1661,6 +898,15 @@ void setup(void)
   calUnion.calByte[0] = EEPROM.read(eeprom.accelBiasZ);
   calUnion.calByte[1] = EEPROM.read(eeprom.accelBiasZ + 1);
   accel.biasZ = calUnion.calValue;
+  calUnion.calByte[0] = EEPROM.read(eeprom.gyroBiasX);
+  calUnion.calByte[1] = EEPROM.read(eeprom.gyroBiasX + 1);
+  gyro.biasX = calUnion.calValue;
+  calUnion.calByte[0] = EEPROM.read(eeprom.gyroBiasY);
+  calUnion.calByte[1] = EEPROM.read(eeprom.gyroBiasY + 1);
+  gyro.biasY = calUnion.calValue;
+  calUnion.calByte[0] = EEPROM.read(eeprom.gyroBiasZ);
+  calUnion.calByte[1] = EEPROM.read(eeprom.gyroBiasZ + 1);
+  gyro.biasZ = calUnion.calValue;
   calUnion.calByte[0] = EEPROM.read(eeprom.highGbiasX);
   calUnion.calByte[1] = EEPROM.read(eeprom.highGbiasX + 1);
   highG.biasX = calUnion.calValue;
@@ -1725,6 +971,13 @@ void setup(void)
       Serial.println(F("Warning: Accelerometer is not calibrated!"));
     }
     accel.biasX = accel.biasY = accel.biasZ = 0;
+    accel.dirX = accel.dirY = accel.dirZ = gyro.dirX = gyro.dirY = gyro.dirZ = 1;
+    accel.orientX = 'X';
+    accel.orientY = 'Y';
+    accel.orientZ = 'Z';
+    gyro.orientX = 'X';
+    gyro.orientY = 'Y';
+    gyro.orientZ = 'Z';
   }
 
   // If the High-G accelerometer calibration values have never been written, then set the offsets to zero
@@ -1736,7 +989,7 @@ void setup(void)
       unusedBytes++;
     }
   }
-  if (unusedBytes >= 2 && !sensors.status_NoHighGAccel)
+  if (unusedBytes >= 2 && sensors.highG != 0)
   {
     if (settings.testMode)
     {
@@ -1773,6 +1026,12 @@ void setup(void)
     Serial.println(accel.biasY);
     Serial.print(F("accel.biasZ: "));
     Serial.println(accel.biasZ);
+    Serial.print(F("gyro.biasX: "));
+    Serial.println(gyro.biasX);
+    Serial.print(F("gyro.biasY: "));
+    Serial.println(gyro.biasY);
+    Serial.print(F("gyro.biasZ: "));
+    Serial.println(gyro.biasZ);
     Serial.print(F("highG.biasX: "));
     Serial.println(highG.biasX);
     Serial.print(F("highG.biasY: "));
@@ -1835,13 +1094,6 @@ void setup(void)
     Serial.println(highG.orientZ);
   }
 
-  // if the ADS1115 is present then restart at the higher rate
-  if (sensors.status_ADS1115 && settings.testMode)
-  {
-    Serial.println(F("Restarting ADS1115 at high rate"));
-    beginADS1115('F');
-  }
-
   // Overrides for bench test mode
   if (settings.testMode)
   {
@@ -1865,6 +1117,7 @@ void setup(void)
     maxVelocity = 202 / unitConvert;
     pktInterval.postFlight = 1000000UL;
     thresholdVel = 15.5F;
+    clearRailTime = 20000UL;
     settings.magSwitchEnable = false;
   }
 
@@ -1896,7 +1149,6 @@ void setup(void)
   // if the magnetic switch is enabled, beep the continuity code until the magnet is sensed
   if (settings.magSwitchEnable)
   {
-    resetMagGain();
     delay(250);
     uint8_t ii = 0;
     bool magDetect = false;
@@ -1947,7 +1199,7 @@ void setup(void)
         ii++;
       }
     } // end outer loop
-  }   // end if magswitch
+  } // end if magswitch
 
   if (settings.testMode)
   {
@@ -1964,9 +1216,13 @@ void setup(void)
     Serial.println(F("Sampling Sensors"));
   }
   // sample the sensors for 3 seconds to determine the offsets and initial values
-  gyro.biasX = 0;
-  gyro.biasY = 0;
-  gyro.biasZ = 0;
+  // all gyros must be calibrated at the pad except the LSM6DSOX
+  if (sensors.gyro != 6)
+  {
+    gyro.biasX = 0;
+    gyro.biasY = 0;
+    gyro.biasZ = 0;
+  }
   getHighG(); // clear out the buffer, useful only for the ADXL377 combo
   int16_t accelSamps = 0;
   int16_t gyroSamps = 0;
@@ -1981,6 +1237,7 @@ void setup(void)
     if (micros() - accel.timeLastSamp > accel.timeBtwnSamp)
     {
       getAccel();
+      orientAccel();
       accel.timeLastSamp = micros();
       accel.sumX0 += accel.x;
       accel.sumY0 += accel.y;
@@ -1992,6 +1249,7 @@ void setup(void)
     if (micros() - gyro.timeLastSamp > gyro.timeBtwnSamp)
     {
       getGyro();
+      orientGyro();
       gyro.timeLastSamp = micros();
       gyro.sumX0 += gyro.rawX;
       gyro.sumY0 += gyro.rawY;
@@ -2002,6 +1260,7 @@ void setup(void)
     if (sensors.highG != 0 && micros() - highG.timeLastSamp > highG.timeBtwnSamp)
     {
       getHighG();
+      orientHighG();
       highG.timeLastSamp = micros();
       highG.sumX0 += highG.x;
       highG.sumY0 += highG.y;
@@ -2012,6 +1271,7 @@ void setup(void)
     if (micros() - mag.timeLastSamp > mag.timeBtwnSamp)
     {
       getMag();
+      orientMag();
       mag.timeLastSamp = micros();
       mag.sumX0 += mag.x;
       mag.sumY0 += mag.y;
@@ -2057,9 +1317,13 @@ void setup(void)
   Serial.println(highGsamps);
   Serial.print("mag samples: ");
   Serial.println(magSamps);
-  gyro.biasX = (int)round(gyro.sumX0 / gyroSamps);
-  gyro.biasY = (int)round(gyro.sumY0 / gyroSamps);
-  gyro.biasZ = (int)round(gyro.sumZ0 / gyroSamps);
+  // LSM6DSOX is accurate enough to not need calibration
+  if (sensors.gyro != 6)
+  {
+    gyro.biasX = (int)round(gyro.sumX0 / gyroSamps);
+    gyro.biasY = (int)round(gyro.sumY0 / gyroSamps);
+    gyro.biasZ = (int)round(gyro.sumZ0 / gyroSamps);
+  }
   accel.x0 = (int)round(accel.sumX0 / accelSamps);
   accel.y0 = (int)round(accel.sumY0 / accelSamps);
   accel.z0 = (int)round(accel.sumZ0 / accelSamps);
@@ -2107,11 +1371,12 @@ void setup(void)
     Serial.print(F("HighG.Z0: "));
     Serial.println(highG.z0);
   }
+  // Z0 + correction = correctZ0
+  // correctZ0 = accel.z0/A2D
+  // correction = correctZ0 - Z0
+  // corrected bias = original bias - directionX *(highG.z0 - accel.z0/A2D)
   if (highG.orientX == 'Z')
   {
-    // Z0 + correction = correctZ0
-    // correctZ0 = accel.z0/A2D
-    // correction = correctZ0 - Z0
     if (settings.testMode)
     {
       Serial.print("Old Bias: ");
@@ -2145,7 +1410,7 @@ void setup(void)
       Serial.print("Old Bias: ");
       Serial.println(highG.biasZ);
     }
-    highG.biasZ -= highG.dirZ * ((int)(highG.z0 - (float)accel.z0 / (float)A2D));
+    highG.biasZ -= highG.dirZ * (highG.z0 - (int)((float)accel.z0 / (float)A2D));
     if (settings.testMode)
     {
       Serial.print(F("New Bias: "));
@@ -2155,23 +1420,22 @@ void setup(void)
   // highG.biasX = highGx0 - (int)((float)accel.x0 / (float)A2D) - 27;//old formula is kept for reference
 
   // Compute the acceleromter based rotation angle
-  const float rad2deg = 57.29577951308; // degrees per radian
   if (accel.y0 >= 0)
   {
-    yawY0 = asinf(min(1, (float)accel.y0 / (float)g)) * rad2deg;
+    yawY0 = asinf(min(1, (float)accel.y0 / (float)g)) * RAD_TO_DEG;
   }
   else
   {
-    yawY0 = asinf(max(-1, (float)accel.y0 / (float)g)) * rad2deg;
+    yawY0 = asinf(max(-1, (float)accel.y0 / (float)g)) * RAD_TO_DEG;
   }
 
   if (accel.x0 >= 0)
   {
-    pitchX0 = asinf(min(1, (float)accel.x0 / (float)g)) * rad2deg;
+    pitchX0 = asinf(min(1, (float)accel.x0 / (float)g)) * RAD_TO_DEG;
   }
   else
   {
-    pitchX0 = asinf(max(-1, (float)accel.x0 / (float)g)) * rad2deg;
+    pitchX0 = asinf(max(-1, (float)accel.x0 / (float)g)) * RAD_TO_DEG;
   }
 
   // update quaternion rotation
@@ -2195,7 +1459,7 @@ void setup(void)
 
   // Read the battery voltage
   voltReading = analogRead(pins.batt);
-  voltage = (float)(voltReading) * 3.3 * 3.2 * adcConvert;
+  voltage = ((float)voltReading) * 3.3 * 3.2 * adcConvert;
 
   // Read the battery voltage on old hardware if present
   if (pins.batt == pins.pyro4Cont)
@@ -2216,28 +1480,14 @@ void setup(void)
     voltage = (float)(voltReading) * 3.3 * 2.72 * adcConvert;
   }
 
-  // Reset the G-trigger
-  if (accel.orientX == 'Z')
-  {
-    gTrigger -= accel.dirX * accel.biasX;
-  }
-  if (accel.orientY == 'Z')
-  {
-    gTrigger -= accel.dirY * accel.biasY;
-  }
-  if (accel.orientZ == 'Z')
-  {
-    gTrigger -= accel.dirZ * accel.biasZ;
-  }
-
   // Read main deploy setting into its beep array
   if (settings.reportStyle == 'P')
   {
-    parseBeep(long(10 * int(settings.mainDeployAlt * (unitConvert / 10))), maxVelDigits, 4);
+    parseBeep((uint32_t)((float)(settings.mainDeployAlt) * unitConvert), maxVelDigits, 4);
     if (settings.testMode)
     {
       Serial.print(F("Reporting Main Deploy Settings: "));
-      Serial.println((int)(settings.mainDeployAlt * unitConvert));
+      Serial.println((uint16_t)((float)(settings.mainDeployAlt) * unitConvert));
     }
     // Beep out the main deployment altitude setting
     while (maxVelDigits[velDigits - 1] == 0)
@@ -2260,15 +1510,15 @@ void setup(void)
   }
 
   // check for initial MCU programming
-  boolean initPgm = true;
+  bool initPgm = false;
   for (byte i = 0; i < altDigits; i++)
   {
-    if (EEPROM.read(eeprom.maxFltAlt + i) != (byte)255)
+    if (EEPROM.read(eeprom.maxFltAlt + i) > 10)
     {
-      initPgm = false;
+      initPgm = true;
     }
   }
-  // Write initial values into EEPROM
+  // Write initial values into EEPROM where needed
   if (initPgm)
   {
     if (settings.testMode)
@@ -2279,6 +1529,9 @@ void setup(void)
     {
       EEPROM.update(eeprom.maxFltAlt + j, j);
     }
+    EEPROM.update(eeprom.totalFlights, 0);
+    EEPROM.update(eeprom.lastEvent, 27);
+    lastEvent = 27;
   }
 
   // Beep out the last flight's altitude
@@ -2288,7 +1541,7 @@ void setup(void)
     {
       Serial.print(F("Reporting last flight: "));
     }
-    for (byte i = 0; i < 6; i++)
+    for (uint8_t i = 0; i < 6; i++)
     {
       maxAltDigits[i] = EEPROM.read(eeprom.maxFltAlt + i);
     }
@@ -2296,7 +1549,7 @@ void setup(void)
     {
       altDigits--;
     }
-    for (byte i = altDigits; i > 0; i--)
+    for (uint8_t i = altDigits; i > 0; i--)
     {
       delay(800);
       if (settings.testMode)
@@ -2310,7 +1563,7 @@ void setup(void)
           Serial.print('0');
         }
       }
-      for (byte j = maxAltDigits[i - 1]; j > 0; j--)
+      for (uint8_t j = maxAltDigits[i - 1]; j > 0; j--)
       {
         digitalWrite(pins.beep, HIGH);
         delay(100);
@@ -2331,11 +1584,11 @@ void setup(void)
       Serial.print(F("Reporting Battery Voltage: "));
       Serial.println(voltage, 1);
     }
-    parseBeep((int)(voltage * 10), voltageDigits, 2);
-    for (byte i = 0; i < 2; i++)
+    parseBeep((uint32_t)(voltage * 10), voltageDigits, 2);
+    for (uint8_t i = 0; i < 2; i++)
     {
       delay(800);
-      for (byte j = voltageDigits[1 - i]; j > 0; j--)
+      for (uint8_t j = voltageDigits[1 - i]; j > 0; j--)
       {
         digitalWrite(pins.beep, HIGH);
         delay(100);
@@ -2346,7 +1599,7 @@ void setup(void)
     delay(2000);
   }
 
-  // set the debug ouputs
+  // set the Serial debug ouputs
   switch (settings.serialDebug)
   {
   case 0:
@@ -2369,25 +1622,27 @@ void setup(void)
 
   if (settings.testMode)
   {
-    Serial.println(F("Setup Complete.  Awaiting simulated launch."));
+    Serial.println(F("Setup Complete. Awaiting simulated launch."));
     Serial.print(F("Beginning Serial Output and Continuity Reporting: "));
     Serial.println(beepCode);
     delay(3000);
   }
 
   // initialize the radio timing
-  radioTimer.begin(timerSendPkt, pktInterval.preLiftoff);
+  radioTimer.begin(timerBuildPkt, pktInterval.preLiftoff);
   if (settings.fltProfile == 'B')
   {
     radio.event = Booster_Preflight;
   }
-
+  Serial.println("End Setup");
 } // end setup
 
+// loop debug and analysis variables
 int cyclesBtwn = 0;
 uint32_t sampleTime = 0UL;
 uint32_t sampleStart = 0UL;
 uint32_t sampleTimeCheck = 0UL;
+uint32_t debugTimer = 0UL;
 
 /*!
  * @brief Main flight loop for the flight computer.
@@ -2408,6 +1663,7 @@ void loop(void)
   if (sampleTimeCheck - accel.timeLastSamp > accel.timeBtwnSamp)
   {
     getAccel();
+    orientAccel();
     accel.timeLastSamp += accel.timeBtwnSamp;
     while (sampleTimeCheck - accel.timeLastSamp > accel.timeBtwnSamp)
     {
@@ -2420,6 +1676,7 @@ void loop(void)
   if (sampleTimeCheck - gyro.timeLastSamp > gyro.timeBtwnSamp)
   {
     getGyro();
+    orientGyro();
     gyro.timeLastSamp += gyro.timeBtwnSamp;
     while (sampleTimeCheck - gyro.timeLastSamp > gyro.timeBtwnSamp)
     {
@@ -2432,6 +1689,7 @@ void loop(void)
   if (sampleTimeCheck - highG.timeLastSamp > highG.timeBtwnSamp)
   {
     getHighG();
+    orientHighG();
     highG.timeLastSamp += highG.timeBtwnSamp;
     while (sampleTimeCheck - highG.timeLastSamp > highG.timeBtwnSamp)
     {
@@ -2444,7 +1702,7 @@ void loop(void)
   if (sampleTimeCheck - baro.timeLastSamp > baro.timeBtwnSamp)
   {
     getBaro();
-    // barometers work in single-shot mode so we can't use time-block sampling like the other sensors
+    // barometers work in single-shot mode at a much lower rate, so we cannot use any time-blocking methods
     baro.timeLastSamp = sampleTimeCheck;
   }
 
@@ -2453,6 +1711,7 @@ void loop(void)
   if (sampleTimeCheck - mag.timeLastSamp > mag.timeBtwnSamp)
   {
     getMag();
+    orientMag();
     mag.timeLastSamp += mag.timeBtwnSamp;
     while (sampleTimeCheck - mag.timeLastSamp > mag.timeBtwnSamp)
     {
@@ -2479,13 +1738,12 @@ void loop(void)
   // look for a shutdown command and if seen, stop all progress for a hard reset
   if (events.preLiftoff && settings.magSwitchEnable)
   {
-    getMag();
-    n = 0;
+    uint8_t magShutdown = 0;
     if (abs(mag.x) > magTrigger || abs(mag.y) > magTrigger || abs(mag.z) > magTrigger)
     {
-      n = 1;
+      magShutdown = 1;
     }
-    while (n == 1)
+    while (magShutdown == 1)
     {
       digitalWrite(pins.beep, HIGH);
       delay(1000);
@@ -2500,23 +1758,34 @@ void loop(void)
       Serial.println(' ');
       Serial.println(F("Simulated Liftoff Detected!"));
     }
+    // set liftoff clock times
     fltTime.padTime = fltTime.tmClockPrev = fltTime.tmClock;
+    fltTime.liftoff = fltTime.tmClock;
+    // update events
     events.preLiftoff = false;
     events.liftoff = true;
     events.inFlight = true;
-    fltTime.liftoff = fltTime.tmClock;
+    // set radio variables
     radio.event = Liftoff;
     radio.alt = 0;
-    radioTimer.begin(timerSendPkt, pktInterval.inflight);
+    radioTimer.end();
+    radioTimer.begin(timerBuildPkt, pktInterval.inflight / pktInterval.samplesPerPkt);
     noInterrupts();
-    sendPkt = true;
+    buildPkt = true;
     interrupts();
+    // set GNSS liftoff values
     gnss.liftoff.hour = GPS.time.hour();
     gnss.liftoff.minute = GPS.time.minute();
     gnss.liftoff.second = GPS.time.second();
     gnss.liftoff.mili = GPS.time.centisecond();
     gnss.maxAlt = 0.0F;
-    // store base alt in EEPROM
+    // if live pyros are detected, turn on the alarm to alert the user that the system is active and may fire pyros
+    if (pyro1.contStatus || pyro2.contStatus || pyro3.contStatus || pyro4.contStatus || settings.testMode)
+    {
+      livePyroAlarm = true;
+      Serial.println("Live-pyro alarm activated");
+    }
+    // store base alt in EEPROM for inflight recovery
     floatUnion.val = baro.baseAlt;
     if (settings.inflightRecover != 0)
     {
@@ -2572,9 +1841,9 @@ void loop(void)
     {
       accelNow = (float)(accel.z - g) * accel.gainZ;
     }
-    else if (!sensors.status_NoHighGAccel)
+    else if (sensors.highG != 0)
     {
-      accelNow = (highG.z - (float)high1G) * highG.gainZ;
+      accelNow = (float)(highG.z - high1G) * highG.gainZ;
     }
     else
     {
@@ -2600,13 +1869,7 @@ void loop(void)
 
       // calculate the new sensor fusion based velocity
       fusionVel += accelNow * (float)fltTime.dt * mlnth;
-      // if we have a barometric update and its within acceptable flight parameters, then update the fusion algorithms
-      bool updateFusionBaro = false;
       if (baro.newSamp && baro.Vel < 300 && baro.Vel < baro.maxVel && accelNow < 0.2F && fusionVel < 300.0F && baro.Alt < 13000)
-      {
-        updateFusionBaro = true;
-      }
-      if (updateFusionBaro)
       {
         fusionVel *= 0.99F;
         fusionVel += 0.01F * baro.Vel;
@@ -2621,11 +1884,10 @@ void loop(void)
 
       // calculate the new sensor fusion based altitude
       fusionAlt += fusionVel * (float)fltTime.dt * mlnth;
-      if (updateFusionBaro)
+      if (baro.newSamp && baro.Alt < 9000)
       {
         fusionAlt *= 0.95;
         fusionAlt += 0.05 * baro.Alt;
-        updateFusionBaro = false;
       }
       if (!altOK && (fusionAlt > settings.altThreshold || settings.testMode))
       {
@@ -2635,19 +1897,19 @@ void loop(void)
 
     } // end if !apogee
 
-    // caluclate the partial rotation
+    // caluclate the partial rotation in millionths of a degree, maintaining integer math for speed and retaining all possible precision
     dx += gyro.x * fltTime.dt;
     dy += gyro.y * fltTime.dt;
     dz += gyro.z * fltTime.dt;
 
-    // if active stablization is on, then use the more stable rotation algorithm
+    // if active stablization is on, then use the more stable rotation algorithm (Rotation.ino)
     if (settings.stableRotn || settings.stableVert)
     {
       getDCM2DRotn(dx, dy, dz, gyro.gainZ);
       dx = dy = dz = 0L;
     }
 
-    // update the quaternion rotation if we are not using active stabilization
+    // else update the quaternion rotation if we are not using active stabilization(Rotation.ino)
     else if (fltTime.timeCurrent - lastRotn > rotnRate)
     {
       getQuatRotn(dx, dy, dz, gyro.gainZ);
@@ -2655,10 +1917,10 @@ void loop(void)
       lastRotn = fltTime.timeCurrent;
     }
 
-    // run event logic
+    // run event logic (Event_Logic.ino)
     checkEvents();
 
-    // update the canards throws if stabilization or flyback is enabled
+    // update the canards throws if stabilization or flyback is enabled (Rotation.ino)
     if (settings.stableRotn || settings.stableVert || settings.flyBack)
     {
       uint32_t controlTime = micros();
@@ -2701,14 +1963,22 @@ void loop(void)
     // Close file at Touchdown or Timeout
     if (events.timeOut || events.touchdown)
     {
-      // write the final data to SD card and close
-      writeSDfooter();
+      // write the final footer data to SD card and close
+      writeSDfooterClose();
+      fileClose = true;
       events.liftoff = false;
+      // rename the file using the timestamp and rocket name
+      if (!settings.testMode)
+      {
+        renameFileSD();
+      }
       // shutoff all pyro outputs
       digitalWrite(pyro1.firePin, LOW);
       digitalWrite(pyro2.firePin, LOW);
       digitalWrite(pyro3.firePin, LOW);
       digitalWrite(pyro4.firePin, LOW);
+      // shutoff the live-pyro alarm
+      livePyroAlarm = false;
       // if FHSS, start the postFlight synch packet timer
       if (settings.FHSS)
       {
@@ -2716,12 +1986,14 @@ void loop(void)
         delayMicroseconds(300000UL);
       }
       // Set the radio transmitter to post-flight data rate
-      radioTimer.begin(timerSendPkt, pktInterval.postFlight);
+      radioTimer.begin(timerBuildPkt, pktInterval.postFlight);
       // Read max altitude into its beep array
-      parseBeep(long(baro.maxAlt * unitConvert), maxAltDigits, 6);
+      parseBeep((uint32_t)(baro.maxAlt * unitConvert), maxAltDigits, 6);
       // Read max velocity into its beep array
-      parseBeep(long(maxVelocity * unitConvert), maxVelDigits, 4);
+      parseBeep((uint32_t)(maxVelocity * unitConvert), maxVelDigits, 4);
       // set the beeper controls to audibly beep out the maximum altitude and speed
+      digitalWrite(pins.beep, LOW);
+      beep = false;
       while (maxAltDigits[altDigits - 1] == 0)
       {
         altDigits--;
@@ -2735,13 +2007,21 @@ void loop(void)
       beepAlt = true;
       beepCont = false;
       beepAlarm = false;
+      beep_delay = long_beep_delay;
       // store the maximum altitude in EEPROM
       if (!settings.testMode)
       {
-        for (byte i = 0; i < 6; i++)
+        for (uint8_t i = 0; i < 6; i++)
         {
           EEPROM.update(eeprom.maxFltAlt + i, maxAltDigits[i]);
         }
+      }
+      // update the EEPROM flight counter
+      if (!settings.testMode)
+      {
+        uint8_t flightCount = (uint8_t)EEPROM.read(eeprom.totalFlights);
+        flightCount++;
+        EEPROM.write(eeprom.totalFlights, flightCount);
       }
       // set the final radio variables
       radio.maxAlt = (int16_t)baro.maxAlt;
@@ -2764,11 +2044,17 @@ void loop(void)
 
   // Radio packet handling
   noInterrupts();
-  bool pktFlag = sendPkt;
+  // use the interrupt to build the packets at regular intervals
+  bool pktFlag = buildPkt;
   interrupts();
   if (settings.TXenable && pktFlag)
   {
-    radioSendPacket();
+    buildTelmetryPkt();
+  }
+  // send the packet when its ready and the radio is available
+  if (settings.TXenable && sendPkt && !TX && sensors.statusRadio)
+  {
+    sendTelemetryPkt();
   }
 
   // Radio Synchronization packet when 915MHz FHSS is used
@@ -2785,17 +2071,20 @@ void loop(void)
     syncPkt();
   }
 
-  // Radio clear interrupts
-  noInterrupts();
-  bool irqFlag = clearTX;
-  interrupts();
-  if (irqFlag)
+  // Radio clear interrupts on SX127X, this must be called in the main loop because we never know when the interrupt will fire
+  if (sensors.radio == 1)
   {
-    clearTXdone();
+    noInterrupts();
+    bool irqFlag = clearTX;
+    interrupts();
+    if (irqFlag)
+    {
+      clearFlagsSX127X();
+    }
   }
 
   // pre-flight continuity alarm beep
-  if (events.preLiftoff && settings.reportStyle != 'M' && beepAlarm && !beep && fltTime.tmClock - timeLastBeep > beep_delay)
+  if (events.preLiftoff && settings.reportStyle != 'M' && beepAlarm && !beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
   {
     digitalWrite(pins.beep, HIGH);
     beep = true;
@@ -2816,7 +2105,7 @@ void loop(void)
   }
 
   // pre-flight continuity beep
-  if (events.preLiftoff && beepCont && !beep && fltTime.tmClock - timeLastBeep > beep_delay)
+  if (events.preLiftoff && beepCont && !beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
   {
     digitalWrite(pins.beep, HIGH);
     beep = true;
@@ -2840,78 +2129,76 @@ void loop(void)
     }
   }
 
-  // post-flight max velocity beeping
-  if (fileClose && beepVel && !beep && fltTime.tmClock - timeLastBeep > beep_delay)
+  // inflight live-pyro activation Warning
+  if (livePyroAlarm && !beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
   {
     digitalWrite(pins.beep, HIGH);
+    beepCode = 50;
     beep = true;
-    beep_len = medBeepLen;
+    beep_len = alarmBeepLen;
+    beep_delay = alarmBeepDelay;
     timeBeepStart = fltTime.tmClock;
-    // decrement the current beep
     beep_counter++;
-    // if the beep has hit the current digit, then move to the next digit
+    // if the counter reaches the beepCode, then give a long delay between beeps
     if (beep_counter == beepCode)
     {
       beep_counter = 0;
-      beep_delay = long_beep_delay;
-      beepCode = maxVelDigits[beepPosn - 1];
-      if (beepPosn == velDigits)
-      {
-        beep_delay = 3000000UL;
-      }
-      beepPosn--;
-      // if we are at the end of the velocity array, switch to the altitude array
-      if (beepPosn == 0)
-      {
-        beepPosn = altDigits;
-        // switch to altitude reporting
-        beepVel = false;
-        beepAlt = true;
-      }
+      beep_delay = 3000000;
     }
-    // move to the next velocity digit
-    else
-    {
-      beep_delay = short_beep_delay;
-    }
-    beep = true;
   }
 
-  // post-flight max altitude and max velocity beeping
-  if (fileClose && beepAlt && !beep && fltTime.tmClock - timeLastBeep > beep_delay)
+  // post-flight max velocity beeping
+  if (fileClose && beepVel && !beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
   {
     digitalWrite(pins.beep, HIGH);
+    beepCode = maxVelDigits[beepPosn - 1];
     beep = true;
     beep_len = medBeepLen;
+    beep_delay = short_beep_delay;
     timeBeepStart = fltTime.tmClock;
-    // decrement the current beep
     beep_counter++;
     // if the beep has hit the current digit, then move to the next digit
     if (beep_counter == beepCode)
     {
       beep_counter = 0;
       beep_delay = long_beep_delay;
-      beepCode = maxAltDigits[beepPosn - 1];
-      if (beepPosn == altDigits)
-      {
-        beep_delay = 3000000UL;
-      }
       beepPosn--;
       // if we are at the end of the velocity array, switch to the altitude array
       if (beepPosn == 0)
       {
-        beepPosn = velDigits;
-        // switch to velocity reporting
-        beepVel = true;
-        beepAlt = false;
+        beepVel = false;
+        beepAlt = true;
+        beepPosn = altDigits;
+        beep_delay = 3000000UL;
       }
     }
-    // move to the next velocity digit
-    else
-    {
-      beep_delay = short_beep_delay;
-    }
+  }
+
+  // post-flight max altitude beeping
+  if (fileClose && beepAlt && !beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
+  {
+    digitalWrite(pins.beep, HIGH);
+    beepCode = maxAltDigits[beepPosn - 1];
     beep = true;
+    beep_len = medBeepLen;
+    beep_delay = short_beep_delay;
+    timeBeepStart = fltTime.tmClock;
+    beep_counter++;
+    // if the beep has hit the current digit, then move to the next digit
+    if (beep_counter == beepCode)
+    {
+      beep_counter = 0;
+      beep_delay = long_beep_delay;
+      beepPosn--;
+      // if we are at the end of the altitude array, switch to the velocity array
+      if (beepPosn == 0)
+      {
+        beepAlt = false;
+        beepVel = true;
+        beepPosn = velDigits;
+        beep_delay = 3000000UL;
+      }
+    }
   }
 
   // Code to stop the beep
@@ -2920,30 +2207,27 @@ void loop(void)
     digitalWrite(pins.beep, LOW);
     beep = false;
     timeBeepStart = 0UL;
-    timeLastBeep = fltTime.tmClock;
+    timeLastBeepEnd = fltTime.tmClock;
   }
 
   // GPS Code
-  // restore defaults if we go a long time without a lock
-  /*if(!configGPSdefaults && micros() - timeLastGPS > 10000000UL){
-    restoreGPSdefaults(settings.testMode);
-    configGPSdefaults = true;
-    gpsFix = 0;
-    fixCount = 0;
-    configGPSflight = false;}*/
+  // restore defaults if desired
+  if (restoreDefaults)
+  {
+    Serial.println("restoring GNSS Default Settings...");
+    GNSSrestorDefaults();
+    restoreDefaults = false;
+  }
   // 5 seconds after touchdown put GPS into Power Save Mode (PSM)
   if (!gnss.configPwrSave && (events.touchdown || events.timeOut) && micros() - fltTime.touchdown > 5000000UL)
   {
-    GPSpowerSaveMode(settings.testMode, sensors.GPS);
+    GNSSpowerSave();
     gnss.configPwrSave = true;
   }
   // Read from serial
-  char serialBuffer[512];
-  uint16_t serialPosn = 0;
-  bool msgRX = false;
   if (HWSERIAL->available() > 0)
   {
-    msgRX = true;
+    gnss.msgRX = true;
   }
   while (HWSERIAL->available() > 0)
   {
@@ -2955,18 +2239,20 @@ void loop(void)
     }
     if (settings.testMode && GPSecho && !events.liftoff)
     {
-      serialBuffer[serialPosn] = c;
-      serialPosn++;
+      gnss.serialBuffer[gnss.serialPosn] = c;
+      gnss.serialPosn++;
+      // print NMEA strings to the serial buffer if needed
+      if (settings.testMode && GPSecho && !events.liftoff && gnss.msgRX && (gnss.serialPosn >= 55))
+      {
+        gnss.serialBuffer[gnss.serialPosn] = '\0';
+        Serial.print(gnss.serialBuffer);
+        gnss.serialPosn = 0;
+        gnss.msgRX = false;
+      }
     }
   }
-  if (settings.testMode && GPSecho && !events.liftoff && msgRX)
-  {
-    serialBuffer[serialPosn] = '\0';
-    Serial.print(serialBuffer);
-    msgRX = false;
-    serialPosn = 0;
-  }
-  radio.satNum = GPS.satellites.value();
+  // update the GNSS values
+  radio.satNum = (uint8_t)GPS.satellites.value();
   if (micros() - gnss.timeLastFix > 2000000UL && !events.postFlight)
   {
     gnss.fix = 0;
@@ -2990,14 +2276,14 @@ void loop(void)
     // configure the GPS if the fix is stable
     if (!gnss.configFlight && gnss.fixCount > 40)
     {
-      configGPS(settings.testMode, sensors.GPS, settings.flyBack);
+      GNSSconfig();
       gnss.fix = 0;
       gnss.configFlight = true;
       gnss.configDefaults = false;
     }
     // capture GPS vertical descent velocity with a moving average of 5 samples
     gnss.altPosn++;
-    if (gnss.altPosn >= (byte)(sizeof(gnss.altBuff) / sizeof(gnss.altBuff[0])))
+    if (gnss.altPosn >= (uint8_t)(sizeof(gnss.altBuff) / sizeof(gnss.altBuff[0])))
     {
       gnss.altPosn = 0;
     }
@@ -3005,7 +2291,7 @@ void loop(void)
     gnss.altBuff[gnss.altPosn] = GPS.altitude.meters();
     gnss.timeBuff[gnss.altPosn] = micros();
     // update sensor fusion velocity if descending
-    if (events.apogee)
+    if (events.apogeeFire)
     {
       fusionVel = 0.9 * gnss.vel + 0.1 * baro.Vel;
     }
@@ -3057,12 +2343,12 @@ void loop(void)
 
 } // end void main loop
 
-void parseBeep(long value, byte array[], byte arrayLen)
+void parseBeep(uint32_t value, uint8_t array[], uint8_t arrayLen)
 {
   bool flag = false;
-  for (byte i = arrayLen; i >= 1; i--)
+  for (uint8_t i = arrayLen; i > 0; i--)
   {
-    array[i - 1] = byte(value / powf(10, i - 1));
+    array[i - 1] = uint8_t((float)value / powf(10, i - 1));
     value -= array[i - 1] * powf(10, i - 1);
     if (!flag && array[i - 1] > 0)
     {
@@ -3432,81 +2718,81 @@ void readEEPROMsettings()
     unitConvert = 1.0F;
   }
   settings.reportStyle = (char)EEPROM.read(eeprom.reportStyle);
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.setupTime + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.setupTime + i);
   }
   settings.setupTime = ulongUnion.val;
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    floatUnion.Byte[i] = (byte)EEPROM.read(eeprom.mainDeployAlt + i);
+    floatUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.mainDeployAlt + i);
   }
   settings.mainDeployAlt = floatUnion.val;
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.apogeeDelay + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.apogeeDelay + i);
   }
   settings.apogeeDelay = ulongUnion.val;
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.rcdTime + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.rcdTime + i);
   }
   settings.rcdTime = ulongUnion.val;
-  settings.silentMode = (boolean)EEPROM.read(eeprom.silentMode);
-  settings.magSwitchEnable = (boolean)EEPROM.read(eeprom.magSwitchEnable);
-  settings.inflightRecover = (byte)EEPROM.read(eeprom.inflightRecover);
-  settings.GPSlog = (boolean)EEPROM.read(eeprom.gpsLogFile);
-  for (byte i = 0; i < 4; i++)
+  settings.silentMode = (bool)EEPROM.read(eeprom.silentMode);
+  settings.magSwitchEnable = (bool)EEPROM.read(eeprom.magSwitchEnable);
+  settings.inflightRecover = (uint8_t)EEPROM.read(eeprom.inflightRecover);
+  settings.GPSlog = (bool)EEPROM.read(eeprom.gpsLogFile);
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.fireTime + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.fireTime + i);
   }
   settings.fireTime = ulongUnion.val;
   settings.pyro1Func = (char)EEPROM.read(eeprom.pyro1Func);
   settings.pyro2Func = (char)EEPROM.read(eeprom.pyro2Func);
   settings.pyro3Func = (char)EEPROM.read(eeprom.pyro3Func);
   settings.pyro4Func = (char)EEPROM.read(eeprom.pyro4Func);
-  settings.TXenable = (boolean)EEPROM.read(eeprom.TXenable);
-  settings.TXpwr = (byte)EEPROM.read(eeprom.TXpwr);
-  for (byte i = 0; i < 4; i++)
+  settings.TXenable = (bool)EEPROM.read(eeprom.TXenable);
+  settings.TXpwr = (uint8_t)EEPROM.read(eeprom.TXpwr);
+  for (uint8_t i = 0; i < 4; i++)
   {
-    floatUnion.Byte[i] = (byte)EEPROM.read(eeprom.TXfreq + i);
+    floatUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.TXfreq + i);
   }
   settings.TXfreq = floatUnion.val;
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.boosterSeparationDelay + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.boosterSeparationDelay + i);
   }
-  settings.FHSS = (boolean)EEPROM.read(eeprom.FHSS);
+  settings.FHSS = (bool)EEPROM.read(eeprom.FHSS);
   settings.boosterSeparationDelay = ulongUnion.val;
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.sustainerFireDelay + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.sustainerFireDelay + i);
   }
   settings.sustainerFireDelay = ulongUnion.val;
   settings.airStart1Event = (char)EEPROM.read(eeprom.airStart1Event);
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.airStart1Delay + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.airStart1Delay + i);
   }
   settings.airStart1Delay = ulongUnion.val;
   settings.airStart2Event = (char)EEPROM.read(eeprom.airStart2Event);
-  for (byte i = 0; i < 4; i++)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    ulongUnion.Byte[i] = (byte)EEPROM.read(eeprom.airStart2Delay + i);
+    ulongUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.airStart2Delay + i);
   }
   settings.airStart2Delay = ulongUnion.val;
-  for (byte i = 0; i < 2; i++)
+  for (uint8_t i = 0; i < 2; i++)
   {
-    intUnion.Byte[i] = (byte)EEPROM.read(eeprom.altThreshold + i);
+    intUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.altThreshold + i);
   }
   settings.altThreshold = intUnion.val;
-  for (byte i = 0; i < 2; i++)
+  for (uint8_t i = 0; i < 2; i++)
   {
-    intUnion.Byte[i] = (byte)EEPROM.read(eeprom.maxAngle + i);
+    intUnion.Byte[i] = (uint8_t)EEPROM.read(eeprom.maxAngle + i);
   }
   settings.maxAngle = intUnion.val;
-  settings.stableRotn = (boolean)EEPROM.read(eeprom.stableRotn);
-  settings.stableVert = (boolean)EEPROM.read(eeprom.stableVert);
+  settings.stableRotn = (bool)EEPROM.read(eeprom.stableRotn);
+  settings.stableVert = (bool)EEPROM.read(eeprom.stableVert);
 }
 
 void processBaroSamp()
@@ -3516,7 +2802,7 @@ void processBaroSamp()
   // process preliftoff variables
   //----------------------------
   static float sumBaseAlt = 0.0F;
-  static byte baseAltPosn = 0;
+  static uint8_t baseAltPosn = 0;
   static float baseAltBuff[30] = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
                                   0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
                                   0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
@@ -3526,7 +2812,7 @@ void processBaroSamp()
     sumBaseAlt += baro.rawAlt;
     baseAltBuff[baseAltPosn] = baro.rawAlt;
     baseAltPosn++;
-    const byte sizeBaseAltBuff = sizeof(baseAltBuff) / sizeof(baseAltBuff[0]);
+    const uint8_t sizeBaseAltBuff = sizeof(baseAltBuff) / sizeof(baseAltBuff[0]);
     if (baseAltPosn >= sizeBaseAltBuff)
     {
       baseAltPosn = 0;
@@ -3569,8 +2855,8 @@ void processBaroSamp()
   //---------------------------
   // barometric derived velocity
   //---------------------------
-  static byte altAvgPosn = 0;
-  static int baroVelPosn = 0;
+  static uint8_t altAvgPosn = 0;
+  static int16_t baroVelPosn = 0;
   static float altAvgBuff[30] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                                  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
@@ -3620,6 +2906,6 @@ void processBaroSamp()
 
 void clearIRQ() { clearTX = true; }
 
-void timerSendPkt() { sendPkt = true; }
+void timerBuildPkt() { buildPkt = true; }
 
 void timerSyncPkt() { syncFlag = true; }

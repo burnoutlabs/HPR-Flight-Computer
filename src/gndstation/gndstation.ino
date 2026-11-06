@@ -9,6 +9,7 @@
  * - V9 overhauls the whole system
  * - V10 eliminates the RadioHead library
  * - V10_1 finalizes functionality to use two radios in tandem
+ * - V10_2 fixes some bugs and adds a distance calculation to the LCD screen
  * 
  * TO DO:
  * 0) Read user data from SD card
@@ -73,6 +74,7 @@ const uint8_t SOFT_SCK_PIN   = 3;
 const uint8_t SD_CS_PIN      = 0; 
 
 // SdFat software SPI template
+#define SPI_DRIVER_SELECT 2
 SoftSpiDriver<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> softSpi;
 #define SD_CONFIG SdSpiConfig(SD_CS_PIN, DEDICATED_SPI, SD_SCK_MHZ(0), &softSpi)
 
@@ -104,7 +106,7 @@ struct{
   byte radio2Pwr = 13;
   boolean displayMetric = false;
   byte debugSerial = 1;
-  char callSign[6] = "KK4ELF";
+  char callSign[7] = "KK4ELF";
   boolean LCD = false;
   byte LCDbrightness = 75;
   byte LCDcontrast = 50;
@@ -143,7 +145,7 @@ radio *activeRadio;
 //Data Packet variables
 //---------------------------
 uint8_t len;
-char dataString[256];
+char dataString[512];
 boolean SDstatus = false;
 char sustainerFileName[13] = "FLIGHT01.txt";
 char boosterFileName[14] = "BOOSTER01.txt";
@@ -406,28 +408,26 @@ void setup() {
   else if(!radio1.enable & radio2.enable){activeRadio = &radio2;}
   else{activeRadio = &radio1;}
 
-  /* EEPROM Allocations:
-  Posn 00-19: Sustainer Name
-  Posn 20-23: Latitude Float
-  Posn    24: Latitude Char
-  Posn 25-28: Longitude Float
-  Posn    29: Longitude Char
-  Posn 30-49: Booster Name
-  Posn 50-53: Latitude Float
-  Posn    54: Latitude Char
-  Posn 55-58: Longitude Float
-  Posn    59: Longitude Char
-  */
+   /* EEPROM Allocations:
+    Posn 00-19: Sustainer Name
+    Posn 20-23: Latitude Float
+    Posn 24-27: Longitude Float
+    Posn    28: Radio1 Freq
+    Posn 29-48: Booster Name
+    Posn 49-52: Latitude Float
+    Posn 53-56: Longitude Float
+    Posn    57: Radio2 Freq
+    */
 
-  //Read EEPROM for the sustainer last GPS coordinates
+  //read EEPROM for the rocket name
   for(byte i = 0; i < sizeof(rocketName); i++){rocketName[i] = EEPROM.read(i);}
-  //for(byte i = 0; i<8;i++){EEPROM.write(20+i, 0);}
+  //Read EEPROM for the sustainer last GPS coordinates
   for(byte i = 0; i < 4; i++){radioUnion.unionByte[i] = EEPROM.read(20+i);}
   lastGPSlat = radioUnion.GPScoord;
-  charGPSlat = EEPROM.read(24);
-  for(byte i = 0; i < 4; i++){radioUnion.unionByte[i] = EEPROM.read(25+i);}
+  if(fabs(lastGPSlat) > 90){lastGPSlat = 0.0;}
+  for(byte i = 0; i < 4; i++){radioUnion.unionByte[i] = EEPROM.read(24+i);}
   lastGPSlon = radioUnion.GPScoord;
-  charGPSlon = EEPROM.read(29);
+  if(fabs(lastGPSlon) >180){lastGPSlon = 0.0;}
 
   //configure GPS
   configGPS();
@@ -450,7 +450,6 @@ void loop() {
     Serial.print(F("Waiting for Packet, frequency "));
     Serial.print(readRadioFreq(), 3);
     Serial.println(" MHz");}
-
   
   //check radios for recieved packet with interrupt
   if(radio1Pkt || radio2Pkt){
@@ -583,36 +582,26 @@ void loop() {
     /* EEPROM Allocations:
     Posn 00-19: Sustainer Name
     Posn 20-23: Latitude Float
-    Posn    24: Latitude Char
-    Posn 25-28: Longitude Float
-    Posn    29: Longitude Char
-    Posn    30: Radio1 Freq
-    Posn 31-50: Booster Name
-    Posn 51-54: Latitude Float
-    Posn    55: Latitude Char
-    Posn 56-59: Longitude Float
-    Posn    60: Longitude Char
-    Posn    61: Radio2 Freq
-    Posn    62: Units
-    Posn    63: FHSS
-    Posn    64: Radio Band
-    Posn    65: BlueTooth Enable
+    Posn 24-27: Longitude Float
+    Posn    28: Radio1 Freq
+    Posn 29-48: Booster Name
+    Posn 49-52: Latitude Float
+    Posn 53-56: Longitude Float
+    Posn    57: Radio2 Freq
     */
     
     //Write the last GPS coordinates to EEPROM for later display
     for(byte i = 0; i < sizeof(rocketName); i++){EEPROM.update(i,rocketName[i]);}
     radioUnion.GPScoord = lastGPSlat;
     for(byte i = 0; i < 4; i++){EEPROM.update(i+20,radioUnion.unionByte[i]);}
-    EEPROM.update(24, charGPSlat);
     radioUnion.GPScoord = lastGPSlon;
-    for(byte i = 0; i < 4; i++){EEPROM.update(i+25,radioUnion.unionByte[i]);}
-    EEPROM.update(29, charGPSlon);
+    for(byte i = 0; i < 4; i++){EEPROM.update(i+24,radioUnion.unionByte[i]);}
     
     //sync the SD card
     if(SDinit && sustainerFileOpen){sustainerFile.sync();}
 
     //display last coordinates on LCD
-    if(settings.LCD){signalLostLCD();}
+    signalLostLCD();
     
     signalEst = false;}
 

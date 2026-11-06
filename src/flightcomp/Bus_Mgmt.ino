@@ -103,10 +103,10 @@ void setHWSERIAL()
 {
 
   Serial.print(F("Setting HW Serial"));
-  Serial.print(sensors.gpsBusNum);
+  Serial.print(sensors.gnssBusNum);
   Serial.print(F("..."));
 
-  switch (sensors.gpsBusNum)
+  switch (sensors.gnssBusNum)
   {
 
   case 1:
@@ -170,7 +170,7 @@ void startI2C(_bus *myBus, uint8_t busNum)
   // start the bus
   if (settings.testMode)
   {
-    Serial.print("Starting i2c bus ");
+    Serial.print("Starting I2C bus ");
   }
 
   myBus->type = 'I';

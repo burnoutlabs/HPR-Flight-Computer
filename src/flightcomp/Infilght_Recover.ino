@@ -15,7 +15,7 @@
  *
  * @return True if conditions for restart are met and system is successfully reset; otherwise, false.
  */
-boolean rapidReset()
+bool rapidReset()
 {
 
   // Read pin settings from EEPROM
@@ -59,14 +59,14 @@ boolean rapidReset()
   sensors.highG = EEPROM.read(eeprom.highGID);
   sensors.baro = EEPROM.read(eeprom.baroID);
   sensors.radio = EEPROM.read(eeprom.radioID);
-  sensors.GPS = EEPROM.read(eeprom.GPSID);
+  sensors.GNSS = EEPROM.read(eeprom.GPSID);
   sensors.accelBusType = (char)EEPROM.read(eeprom.accelBusType);
   sensors.gyroBusType = (char)EEPROM.read(eeprom.gyroBusType);
   sensors.magBusType = (char)EEPROM.read(eeprom.magBusType);
   sensors.highGBusType = (char)EEPROM.read(eeprom.highGBusType);
   sensors.baroBusType = (char)EEPROM.read(eeprom.baroBusType);
   sensors.sdBusType = (char)EEPROM.read(eeprom.sdBusType);
-  sensors.gpsBusType = (char)EEPROM.read(eeprom.gpsBusType);
+  sensors.gnssBusType = (char)EEPROM.read(eeprom.gpsBusType);
   sensors.radioBusType = (char)EEPROM.read(eeprom.radioBusType);
   sensors.accelBusNum = EEPROM.read(eeprom.accelBusType);
   sensors.gyroBusNum = EEPROM.read(eeprom.gyroBusNum);
@@ -74,7 +74,7 @@ boolean rapidReset()
   sensors.highGBusNum = EEPROM.read(eeprom.highGBusNum);
   sensors.baroBusNum = EEPROM.read(eeprom.baroBusNum);
   sensors.sdBusNum = EEPROM.read(eeprom.sdBusNum);
-  sensors.gpsBusNum = EEPROM.read(eeprom.gpsBusNum);
+  sensors.gnssBusNum = EEPROM.read(eeprom.gpsBusNum);
   sensors.radioBusNum = EEPROM.read(eeprom.radioBusNum);
   for (byte i = 0; i < sizeof(settings.callSign); i++)
   {
@@ -138,7 +138,7 @@ boolean rapidReset()
 
   // restart hardware serial
   setHWSERIAL();
-  if (sensors.GPS == 3)
+  if (sensors.GNSS == 3)
   {
     HWSERIAL->begin(38400);
   }
@@ -153,7 +153,7 @@ boolean rapidReset()
   // radio setup
   if (settings.TXenable && settings.inflightRecover > 0)
   {
-    radioBegin(pins.radioRST);
+    beginRadio();
     // Set the radio output power & frequency
     setRadioPWR(settings.TXpwr); // 23 max setting; 20mW=13dBm, 30mW=15dBm, 50mW=17dBm, 100mW=20dBm
     if (sensors.radio == 2 && settings.FHSS)
@@ -417,24 +417,24 @@ boolean rapidReset()
   }
 
   // variables to assess before we enter the sample loop
-  uint32_t monoAltUp = sampleStart;   // timestamp of first increasing altitude
+  // uint32_t monoAltUp = sampleStart;//timestamp of first increasing altitude
   uint32_t monoAltDwn = sampleStart;  // timestamp of first decreasing altitude
-  boolean altRange10 = false;         // altitude observed range within 10ft
+  bool altRange10 = false;            // altitude observed range within 10ft
   uint32_t allAccelNeg = sampleStart; // timestamp of first negative acceleration
-  boolean altAbove100m = true;
+  bool altAbove100m = true;
   uint32_t altBelow100m = sampleStart; // timestamp of last altitude sample above 300m
   float minAltSamp = 0.0F;
   float maxAltSamp = 0.0F;
   float altSamp[300];
-  byte currentSamp = 0;
-  byte lastSamp = 0;
-  boolean cone20deg = true;
+  uint8_t currentSamp = 0;
+  // uint8_t lastSamp = 0;
+  bool cone20deg = true;
   float lastAlt = 0;
   float maxRotnSpeed = 0.0F;
-  boolean altDelta50 = false;
-  boolean altDelta100 = false;
-  boolean accel1G = false;
-  boolean bufferFull = false;
+  bool altDelta50 = false;
+  bool altDelta100 = false;
+  bool accel1G = false;
+  bool bufferFull = false;
   int maxAccel = -32000;
   int minAccel = 32000;
   uint32_t axialAccel = sampleStart; // timestamp of last axial acceleration above 0.25G
@@ -448,6 +448,12 @@ boolean rapidReset()
     settings.pyro4Func = 'N';
   }
 
+  // set the alttitude samples to zero so the compiler doesnt get confused
+  for (uint16_t i = 0; i < sizeof(altSamp) / sizeof(altSamp[1]); i++)
+  {
+    altSamp[i] = 0.0;
+  }
+
   // start 8 seconds of sampling
   while (micros() - sampleStart > 8000000UL)
   {
@@ -455,7 +461,7 @@ boolean rapidReset()
     //---------------------------
     // sound alarm
     //---------------------------
-    if (!beep && micros() - timeLastBeep > alarmBeepDelay)
+    if (!beep && micros() - timeLastBeepEnd > alarmBeepDelay)
     {
       digitalWrite(pins.beep, HIGH);
       beep = true;
@@ -465,7 +471,7 @@ boolean rapidReset()
     {
       digitalWrite(pins.beep, LOW);
       beep = false;
-      timeLastBeep = micros();
+      timeLastBeepEnd = micros();
     }
 
     //---------------------------
@@ -506,10 +512,7 @@ boolean rapidReset()
       }
 
       // monotonically increasing altitude
-      if (baro.Alt + 5 < lastAlt)
-      {
-        monoAltUp = micros();
-      }
+      // if(baro.Alt + 5 < lastAlt){monoAltUp = micros();}
 
       // monotonically decreasing altitude
       if (baro.Alt - 5 > lastAlt)

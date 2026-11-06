@@ -7,10 +7,13 @@ void readRadioSettingsSD()
   settingsFile = SD.open("Settings.txt", FILE_READ);
 
   // Read in the user defined variables
-  // parseNextVariable(false);n=0;
   // Station Settings
   settings.LCD = (boolean)(parseNextVariable(true));
+  Serial.print("LCD: ");
+  Serial.println(settings.LCD);
   settings.LCDbrightness = (uint8_t)(parseNextVariable(true));
+  Serial.print("brightness: ");
+  Serial.println(settings.LCDbrightness);
   settings.LCDcontrast = (uint8_t)(parseNextVariable(true));
   settings.displayMetric = (boolean)(parseNextVariable(true));
   if (settings.displayMetric)
@@ -23,7 +26,15 @@ void readRadioSettingsSD()
   {
     settings.callSign[i] = dataString[i];
   }
+  Serial.print("Callsign: ");
+  for (byte i = 0; i < sizeof(settings.callSign); i++)
+  {
+    Serial.print(settings.callSign[i]);
+  }
+  Serial.println(" ");
   settings.enableSD = (boolean)(parseNextVariable(true));
+  Serial.print("SD: ");
+  Serial.println(settings.enableSD);
   settings.enableGPS = (boolean)(parseNextVariable(true));
   settings.blueTooth = (boolean)(parseNextVariable(true));
   settings.debugSerial = (boolean)(parseNextVariable(true));
@@ -177,12 +188,8 @@ void writePreflightData()
   writeIntData(GPSlock);
   writeIntData(baseAlt);
   writeIntData(baseGPSalt);
-  dataString[strPosn] = charGPSlat;
-  strPosn++;
-  writeFloatData(GPSlatitude, 4);
-  dataString[strPosn] = charGPSlon;
-  strPosn++;
-  writeFloatData(GPSlongitude, 4);
+  writeFloatData(GPSlatitude, 6);
+  writeFloatData(GPSlongitude, 6);
   dataString[strPosn] = '\r';
   strPosn++;
   dataString[strPosn] = '\n';
@@ -212,7 +219,6 @@ void writePreflightData()
 
 void writeInflightData()
 {
-  strPosn = 0;
   writeIntData(event);
   // writeFloatData((float)(sampleTime) * 0.01, 2);
   writeTimeStamp(sampleTime);
@@ -222,12 +228,8 @@ void writeInflightData()
   writeIntData(spin);
   writeFloatData((float)(offVert) * 0.1, 1);
   writeIntData(GPSalt);
-  dataString[strPosn] = charGPSlat;
-  strPosn++;
-  writeFloatData(GPSlatitude, 4);
-  dataString[strPosn] = charGPSlon;
-  strPosn++;
-  writeFloatData(GPSlongitude, 4);
+  writeFloatData(GPSlatitude, 6);
+  writeFloatData(GPSlongitude, 6);
   writeIntData(signalStrength);
   writeIntData(packetnum);
   // end of sample - carriage return, newline, and null value
@@ -236,24 +238,6 @@ void writeInflightData()
   dataString[strPosn] = '\n';
   strPosn++;
   dataString[strPosn] = '\0';
-  if (parseSustainer)
-  {
-    sustainerFile.write(dataString, strPosn);
-  }
-  if (parseBooster)
-  {
-    boosterFile.write(dataString, strPosn);
-  }
-
-  // sync the SD card
-  if (SDinit && parseSustainer)
-  {
-    sustainerFile.sync();
-  }
-  if (SDinit && parseBooster)
-  {
-    boosterFile.sync();
-  }
 }
 
 void writePostflightData()
@@ -285,12 +269,8 @@ void writePostflightData()
   writeIntData(maxGPSalt);
   writeIntData(GPSlock);
   writeIntData(GPSalt);
-  dataString[strPosn] = charGPSlat;
-  strPosn++;
-  writeFloatData(GPSlatitude, 4);
-  dataString[strPosn] = charGPSlon;
-  strPosn++;
-  writeFloatData(GPSlongitude, 4);
+  writeFloatData(GPSlatitude, 6);
+  writeFloatData(GPSlongitude, 6);
   if (parseSustainer)
   {
     sustainerFile.write(dataString, strPosn);

@@ -1,5 +1,5 @@
 /*!
- * \file GPS_Config.ino
+ * \file UBLOX_GNSS_Config.ino
  * \brief Configuration and power management routines for u-Blox GPS modules.
  *
  * This code provides a set of functions to configure, power-manage, and communicate
@@ -7,60 +7,58 @@
  * communication, data conversion, and acknowledgment handling.
  */
 
-#include <Adafruit_GPS.h>
-
-// Adafruit GPS setup
-Adafruit_GPS ultGPS(HWSERIAL);
-
 /*!
- * \brief Restore GPS to factory default settings.
+ * \brief Restore the u-Blox GNSS receiver to factory default settings.
  *
- * This function sends a command to the u-Blox GPS module to restore factory
- * default settings. It is not currently used in the configuration routines.
- *
- * \param serialOutput If true, outputs debug information to the serial console.
+ * This function sends a command to the u-Blox GNSS module to restore factory
+ * default settings. It is reached through the GNSSrestorDefaults() pointer when a
+ * u-Blox receiver is configured. Debug output goes to the serial console in test mode.
  */
-void restoreGPSdefaults(bool serialOutput)
+void UBLOXrestorDefaults()
 {
 
-  byte gpsSetSuccess = 0;
-  if (serialOutput)
+  uint8_t gpsSetSuccess = 0;
+  if (settings.testMode)
   {
     Serial.println("Configuring u-Blox GPS initial state...");
   }
 
   // Generate the configuration string for Factory Default Settings
-  byte setDefaults[] = {0xB5, 0x62, 0x06, 0x09, 0x0D, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x17, 0x2F, 0xAE};
+  uint8_t setDefaults[] = {0xB5, 0x62, 0x06, 0x09, 0x0D, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x17, 0x2F, 0xAE};
 
   // Restore Factory Defaults
   while (gpsSetSuccess < 3)
   {
-    if (serialOutput)
+    if (settings.testMode)
     {
       Serial.print("Restoring Factory Defaults... ");
     }
     sendUBX(&setDefaults[0], sizeof(setDefaults)); // Send UBX Packet
     gpsSetSuccess += getUBX_ACK(&setDefaults[2]);
   }
-  if (gpsSetSuccess == 3 && serialOutput)
+  if (gpsSetSuccess == 3 && settings.testMode)
   {
     Serial.println("Restore factory defaults failed!");
   }
 }
 
 /*!
- * \brief Configure the u-Blox GPS with custom settings.
+ * \brief Configure the u-Blox GNSS receiver with custom settings.
  *
  * This function sends a series of UBX commands to update navigation settings,
  * data rate, GNSS constellations, NMEA sentence configurations, interference
- * thresholds, and baud rates.
+ * thresholds, and baud rates. It is reached through the GNSSconfig() pointer.
  *
- * \param serialOutput If true, outputs debug information to the serial console.
- * \param gpsVersion GPS module version (1, 2, 3, or 4).
- * \param VTGoption If true, enables VTG (course over ground) NMEA messages.
+ * The module version is taken from sensors.GNSS (1, 2, or 3); VTG (course over ground)
+ * NMEA messages stay enabled only when settings.flyBack is set; debug output goes to
+ * the serial console in test mode.
  */
-void configGPS(bool serialOutput, byte gpsVersion, bool VTGoption)
+void UBLOXconfig()
 {
+
+  uint8_t gpsVersion = sensors.GNSS;
+  bool serialOutput = settings.testMode;
+  bool VTGoption = settings.flyBack;
 
   byte gpsSetSuccess = 0;
 
@@ -282,31 +280,26 @@ void configGPS(bool serialOutput, byte gpsVersion, bool VTGoption)
     else if (gpsVersion == 2)
     {
       HWSERIAL->end();
-      HWSERIAL->clear();
+      HWSERIAL->flush();
       HWSERIAL->begin(38400);
     }
-  }
-
-  if (gpsVersion == 4)
-  {
-    ultGPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-    ultGPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
-    ultGPS.sendCommand(PMTK_SET_BAUD_57600);
   }
 
 } // end configGPS
 
 /*!
- * \brief Enter GPS Power Save Mode for reduced power consumption.
+ * \brief Enter GNSS Power Save Mode for reduced power consumption.
  *
- * This function configures the u-Blox GPS to enter power save mode, reducing
- * power consumption and updating less frequently.
- *
- * \param serialOutput If true, outputs debug information to the serial console.
- * \param gpsVersion GPS module version (1 through 4).
+ * This function configures the u-Blox GNSS receiver to enter power save mode, reducing
+ * power consumption and updating less frequently. It is reached through the
+ * GNSSpowerSave() pointer; the module version is taken from sensors.GNSS, and debug
+ * output goes to the serial console in test mode.
  */
-void GPSpowerSaveMode(bool serialOutput, byte gpsVersion)
+void UBLOXpowerSave()
 {
+
+  bool serialOutput = settings.testMode;
+  uint8_t gpsVersion = sensors.GNSS;
 
   // configure UBLOX chips
   if (gpsVersion < 4)
@@ -376,13 +369,6 @@ void GPSpowerSaveMode(bool serialOutput, byte gpsVersion)
     }
     gpsSetSuccess = 0;
   }
-
-  // Set lower update rate for Adafruit Ultimate GPS
-  if (gpsVersion == 4)
-  {
-    ultGPS.sendCommand(PMTK_SET_NMEA_UPDATE_100_MILLIHERTZ);
-  }
-
 } // End PowerSave Mode
 
 /*!

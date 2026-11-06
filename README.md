@@ -1,12 +1,13 @@
 
 **Builds on [HPR Rocket Flight Computer](https://github.com/SparkyVT/HPR-Rocket-Flight-Computer) by SparkyVT**  
+The code in this repository is based on upstream V4.7.2 ([`57c1224`](https://github.com/SparkyVT/HPR-Rocket-Flight-Computer/tree/57c122420cbadd5b4ad754281a0be82aa6ef7d2b)).  
 
 ## DESCRIPTION
 
-This flight computer is designed for rockets 38mm in diameter or greater, and will fit inside a 38mm tube coupler.  
-**Dimensions**: 4.0in x 1.25in x 0.5in, antenna configuration may add more length  
+This code base is the software to run an advanced flight computer in high-power amateur rockets.  
+Hardware setups vary, but typically can fit within a 38mm airframe.  
 It has similar capability as a TeleMega, but without a smart-phone app or advanced interfaces  
-Flight-tested on multiple M-and-N powered supersonic flights to over 34K feet and Mach 2.3.  
+Flight-tested on over 250 successful flights, including M-and-N powered supersonic flights to over 34K feet and Mach 2.3.  
 For large or high-power projects, a commercially available backup computer is strongly recommended.  
 
 ## FEATURES
@@ -47,18 +48,19 @@ For large or high-power projects, a commercially available backup computer is st
 - Report in SI or Metric units
 - Compatible with Teensy 3.2, 3.5, 3.6, 4.0, 4.1
   - Connect any sensor to any available I2C or SPI bus
-  - Create your own custom setup with configurable pins for continuity, firing, and servos
+  - Create your own custom hardware setup with configurable pins for continuity, firing, and servos
   - Connect UBLOX GPS unit to any available HW Serial port
 
 ## FLIGHT COMPUTER COMPONENTS
 
 - **Microprocessor**: Teensy 4.1, 3.5, or 3.6 (compatible with provided PCB file) or Teensy 4.0/3.2 (no PCB file provided)
-- **IMU**: LSM6DS0X (recommended), LSM9DS1, LSM6DS33, MPU6050, or LSM303 & L3GD20H combo
-- **Magnetometer**: LIS3MDL (recommended), LSM9DS1, or LSM303
+- **IMU**: LSM6DSOX (recommended), LSM6DS3TR, LSM9DS1, LSM6DS33, MPU6050, MPU9250, or LSM303 & L3GD20H combo
+- **Magnetometer**: LIS3MDL (recommended), LSM9DS1, MPU9250, or LSM303
 - **100G Accelerometer**: H3LIS331DL (recommended), ADXL377, or ADXL377 & ADS1115 combo
 - **Pressure Sensor**: MS5611 (recommended), MS5607, MPL3115A2, BMP180, BMP280, or BMP388 (Note: BMP280 & BMP388 incompatible with telemetry due to EMI)
 - **GNSS**: UBLOX M6, M7, M8, M9 (NEO footprint supported in PCB file) or Adafruit Ultimate GPS
-- **LoRa Telemetry**: RFM96W or RFM95W, both capable of TX on 433MHz or 915MHz (433MHz USA: Amateur License Required, EUR: License Free)
+- **LoRa Telemetry**: RFM96W or RFM95W, both capable of TX on 433MHz or 915MHz (433MHz USA: Amateur License Required, EUR: License Free), or an RFD900 serial radio
+- **Other devices**: any accelerometer, gyroscope, magnetometer, high-G accelerometer, barometer, GNSS receiver, or packet radio without a built-in driver can be used through an external library (see `src/flightcomp/Device_Drivers_External.ino`)
 
 ## GROUND STATION COMPONENTS
 
@@ -74,11 +76,4 @@ For large or high-power projects, a commercially available backup computer is st
 
 - TinyGPS++
 - SDfat and/or SD
-
-## HARDWARE OPTIONS
-
-- **OPTION 1**: Assemble the unit yourself. Purchase a Teensy 4.0 or 4.1 and integrate the system with commercially available sensor breakout boards. If you want to use high-current pyro outputs, then it is up to you to develop the continuity and firing circuitry. I have threaded standoffs and screws that are a perfect fit for the Adafruit breakout boards.
-- **OPTION 2**: Contact me for a custom Teensy breakout board and add your own sensors. The breakout includes a Teensy 4.1, integrates 4x high-current pyro outputs, and 6 easy-to-use terminal blocks to integrate into your high-power rocket. Includes Qwiic connector to easily integrate your custom sensor package over I2C.
-- **OPTION 3**: Contact me for a fully-functional Frankenstein-board. This integrates all sensors breakout boards onto a single main board that is 4.0 x 1.25 x 0.5 inches. Comes fully assembled, pre-programmed, calibrated, and tested. Configurations will vary, but quality will not.  
-- **OPTION 4**: Try your hand at assembling the Frankenstein-board yourself. This is a single bare-board with no breakouts attached. You will need to reflow the GNSS chip and hand-solder approximately 30 components. Instructions included. Contact me for for a bare-board.
-- **OPTION 5**: Contact me for a fully assembled and tested ground station. Includes ground unit with 2 radios and 20x4 LCD mounted in a custom form-fitting box.
+- SparkFun SerLCD (ground station)
