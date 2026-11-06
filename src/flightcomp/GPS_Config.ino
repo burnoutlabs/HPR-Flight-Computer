@@ -1,5 +1,5 @@
 /*!
- * \file GPS_config.ino
+ * \file GPS_Config.ino
  * \brief Configuration and power management routines for u-Blox GPS modules.
  *
  * This code provides a set of functions to configure, power-manage, and communicate
