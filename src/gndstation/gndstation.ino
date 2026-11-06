@@ -1,8 +1,8 @@
 /**
  * @brief File: gndstation.ino
- * 
+ *
  * This file contains the setup and loop functions for the rocket's control system.
- * 
+ *
  * Versions:
  * - V7 uses only a single microprocessor
  * - V8 uses an optimized data stream
@@ -10,7 +10,7 @@
  * - V10 eliminates the RadioHead library
  * - V10_1 finalizes functionality to use two radios in tandem
  * - V10_2 fixes some bugs and adds a distance calculation to the LCD screen
- * 
+ *
  * TO DO:
  * 0) Read user data from SD card
  * 1) Create BLE Service
@@ -32,16 +32,16 @@
 #include <SPI.h>
 #include <Wire.h>
 
-//Hardware Serial for GPS
+// Hardware Serial for GPS
 HardwareSerial *HWSERIAL;
 
-//Radio control pins
-#define radio1RST     14//ok
-#define radio1CS      15//ok
-#define radio1IRQ     17//ok
-#define radio2RST     16//ok
-#define radio2CS      20//ok
-#define radio2IRQ     22//ok
+// Radio control pins
+#define radio1RST 14 // ok
+#define radio1CS 15  // ok
+#define radio1IRQ 17 // ok
+#define radio2RST 16 // ok
+#define radio2CS 20  // ok
+#define radio2IRQ 22 // ok
 
 char serialBuffer[256];
 int serialPosn = 0;
@@ -54,24 +54,26 @@ int16_t pktRssi;
 float radio1Freq = 433.500;
 float radio2Freq = 902.300;
 
-//RegOpMode
-enum {
-  SleepMode     =  0x00,
-  StandbyMode   =  0x01,
-  TXmode        =  0x03,
-  RXmode        =  0x05,
-  CADmode       =  0x07,
-  LoRaMode      =  0x80, 
-  LowFrqMode    =  0x08, //LowFrq mode enables registers below 860MHz
-  writeMask     =  0x80};
+// RegOpMode
+enum
+{
+  SleepMode = 0x00,
+  StandbyMode = 0x01,
+  TXmode = 0x03,
+  RXmode = 0x05,
+  CADmode = 0x07,
+  LoRaMode = 0x80,
+  LowFrqMode = 0x08, // LowFrq mode enables registers below 860MHz
+  writeMask = 0x80
+};
 
 byte radio1Fnctn = RXmode;
 byte radio2Fnctn = RXmode;
 
-const uint8_t SOFT_MISO_PIN  = 2;
-const uint8_t SOFT_MOSI_PIN  = 1;
-const uint8_t SOFT_SCK_PIN   = 3;
-const uint8_t SD_CS_PIN      = 0; 
+const uint8_t SOFT_MISO_PIN = 2;
+const uint8_t SOFT_MOSI_PIN = 1;
+const uint8_t SOFT_SCK_PIN = 3;
+const uint8_t SD_CS_PIN = 0;
 
 // SdFat software SPI template
 #define SPI_DRIVER_SELECT 2
@@ -83,19 +85,20 @@ FsFile sustainerFile;
 FsFile boosterFile;
 FsFile settingsFile;
 
-//LCD Setup
+// LCD Setup
 SerLCD lcd;
 
 // GPS Setup
 TinyGPSPlus GPS;
 
-//Timer for the radio
+// Timer for the radio
 IntervalTimer radioTimer;
 
 //---------------------------
-//User Settings
+// User Settings
 //---------------------------
-struct{
+struct
+{
   boolean radio1enable = true;
   boolean radio2enable = true;
   float radio1freq;
@@ -116,9 +119,10 @@ struct{
   boolean enableGPS = true;
 } settings;
 //---------------------------
-//Radio Control variables
+// Radio Control variables
 //---------------------------
-typedef struct{
+typedef struct
+{
   float frq;
   byte num;
   boolean enable = true;
@@ -142,7 +146,7 @@ radio radio1;
 radio radio2;
 radio *activeRadio;
 //---------------------------
-//Data Packet variables
+// Data Packet variables
 //---------------------------
 uint8_t len;
 char dataString[512];
@@ -175,7 +179,7 @@ boolean parseBooster = false;
 uint32_t timeLastNMEA = 0UL;
 bool ledLight = false;
 //---------------------------
-//preflight output variables
+// preflight output variables
 //---------------------------
 uint8_t event;
 int strPosn = 0;
@@ -187,40 +191,40 @@ boolean sustainerPostFlightWrite = true;
 boolean boosterPostFlightWrite = true;
 boolean boosterFileReady = false;
 unsigned long lostSignalTime = 2000000UL;
-byte j=0;
+byte j = 0;
 //---------------------------
-//preflight output variables
+// preflight output variables
 //---------------------------
-char rocketName[20]="";
-int baseAlt=0;
+char rocketName[20] = "";
+int baseAlt = 0;
 int baseGPSalt = 0;
 byte contCode;
 int satNum = 0;
 boolean fileOpen = true;
 //---------------------------
-//inflight output variables
+// inflight output variables
 //---------------------------
 uint16_t sampleTime;
-int16_t signalStrength=0;
+int16_t signalStrength = 0;
 int16_t velocity = 0;
-int16_t Alt=0;
-int16_t spin=0;
-int16_t offVert=0;
-int16_t accel=0;
+int16_t Alt = 0;
+int16_t spin = 0;
+int16_t offVert = 0;
+int16_t accel = 0;
 int16_t packetNum = 0;
 boolean apogee = false;
 unsigned long lastSustainerRX = 0UL;
 unsigned long lastBoosterRX = 0UL;
 //---------------------------
-//Postflight output variables
+// Postflight output variables
 //---------------------------
-int maxAltitude=0;
-int maxVelocity=0;
-int maxG=0;
-int maxGPSalt=0;
-//GPS output variables
+int maxAltitude = 0;
+int maxVelocity = 0;
+int maxG = 0;
+int maxGPSalt = 0;
+// GPS output variables
 byte GPSlock;
-int GPSalt=0;
+int GPSalt = 0;
 int prevGPSalt;
 char charGPSlat;
 float GPSlatitude;
@@ -232,25 +236,27 @@ float prevGPSlat = 0.0;
 float prevGPSlon = 0.0;
 unsigned long lastGPSfix = 0UL;
 //---------------------------
-//Radio Variables
+// Radio Variables
 //---------------------------
 boolean GPSdebug = false;
 boolean debugSerial = true;
 float unitConvert = 3.28084F;
 volatile boolean radio1Pkt = false;
 volatile boolean radio2Pkt = false;
-union {
-   float GPScoord;
-   unsigned long radioTime;
-   byte unionByte[4];
+union
+{
+  float GPScoord;
+  unsigned long radioTime;
+  byte unionByte[4];
 } radioUnion;
-union {
-   int16_t unionInt;
-   byte unionByte[2]; 
+union
+{
+  int16_t unionInt;
+  byte unionByte[2];
 } radioInt;
 byte radioFnctn;
 //---------------------------
-//LCD Variables
+// LCD Variables
 //---------------------------
 byte whiteIntensity = 125;
 byte redIntensity = 255;
@@ -258,7 +264,7 @@ byte greenIntensity = 255;
 byte blueIntensity = 255;
 byte flightPhase = 0;
 //---------------------------
-//Event Table
+// Event Table
 //---------------------------
 const String event_00 = "Preflight";
 const String event_01 = "Liftoff";
@@ -294,20 +300,20 @@ const String event_30 = "Booster Preflight";
 const String event_31 = "Booster Time Limit";
 const String event_32 = "Booster Pwr Restart";
 
-const String  eventTable[] = {
-  event_00, event_01, event_02, event_03, event_04,
-  event_05, event_06, event_07, event_08, event_09,
-  event_10, event_11, event_12, event_13, event_14,
-  event_15, event_16, event_17, event_18, event_19,
-  event_20, event_21, event_22, event_23, event_24,
-  event_25, event_26, event_27, event_28, event_29,
-  event_30, event_31, event_32};
+const String eventTable[] = {
+    event_00, event_01, event_02, event_03, event_04,
+    event_05, event_06, event_07, event_08, event_09,
+    event_10, event_11, event_12, event_13, event_14,
+    event_15, event_16, event_17, event_18, event_19,
+    event_20, event_21, event_22, event_23, event_24,
+    event_25, event_26, event_27, event_28, event_29,
+    event_30, event_31, event_32};
 
-byte greenEvents[] = {5,6,7};
+byte greenEvents[] = {5, 6, 7};
 byte redEvents[] = {18, 19, 20, 26, 28};
 
 //---------------------------
-//Pyro Code Table
+// Pyro Code Table
 //---------------------------
 const String cont_0 = "No Pyros Detected!";
 const String cont_1 = "No Continuity Pyro 1";
@@ -321,43 +327,54 @@ const String cont_8 = "Pyro Mains Only";
 const String cont_9 = "Pyro Mains & Apogee";
 
 const String pyroTable[] = {
-  cont_0, cont_1, cont_2, cont_3, cont_4, 
-  cont_5, cont_6, cont_7, cont_8, cont_9};
-  
+    cont_0, cont_1, cont_2, cont_3, cont_4,
+    cont_5, cont_6, cont_7, cont_8, cont_9};
+
 byte greenCont[5] = {5, 6, 7, 8, 9};
-byte redCont[5]   = {0, 1, 2, 3, 4};
+byte redCont[5] = {0, 1, 2, 3, 4};
 
 uint8_t eventPosn = 0;
 
-void setup() {
+void setup()
+{
 
-  //start SPI
+  // start SPI
   SPI.begin();
-    
-  //Primary Serial Port
+
+  // Primary Serial Port
   Serial.begin(9600);
   Serial2.begin(9600);
-  
-  //Read the battery voltage
+
+  // Read the battery voltage
   pinMode(A0, INPUT);
   battVolt = 0;
-  for(byte i = 0; i < 5; i++){battVolt += analogRead(A10);delay(10);}
-  battVolt/=5;
+  for (byte i = 0; i < 5; i++)
+  {
+    battVolt += analogRead(A10);
+    delay(10);
+  }
+  battVolt /= 5;
 
-  //Set interrupts
+  // Set interrupts
   pinMode(radio1IRQ, INPUT);
   attachInterrupt(digitalPinToInterrupt(radio1IRQ), clearIRQ1, RISING);
   pinMode(radio2IRQ, INPUT);
   attachInterrupt(digitalPinToInterrupt(radio2IRQ), clearIRQ2, RISING);
 
-  //Start SD card
+  // Start SD card
   SDinit = SD.begin(SD_CONFIG);
-  if(!SDinit){Serial.println(F("SD card failed"));}
-  else{Serial.println(F("SD Card OK!"));}
-  //Read user settings  
+  if (!SDinit)
+  {
+    Serial.println(F("SD card failed"));
+  }
+  else
+  {
+    Serial.println(F("SD Card OK!"));
+  }
+  // Read user settings
   readRadioSettingsSD();
-  
-  //set the radio pointers
+
+  // set the radio pointers
   radio1.num = 1;
   radio2.num = 2;
   radio1.cs = radio1CS;
@@ -365,7 +382,7 @@ void setup() {
   radio1.rst = radio1RST;
   radio2.rst = radio2RST;
 
-  //set radio pins
+  // set radio pins
   pinMode(radio1.cs, OUTPUT);
   pinMode(radio1.rst, OUTPUT);
   pinMode(radio2.cs, OUTPUT);
@@ -374,210 +391,371 @@ void setup() {
   digitalWrite(radio1.rst, HIGH);
   digitalWrite(radio2.cs, HIGH);
   digitalWrite(radio2.rst, HIGH);
-  
-  //Radio1 setup
+
+  // Radio1 setup
   delay(500);
   activeRadio = &radio1;
   activeRadio->status = radioBegin();
-  if(!activeRadio->status){Serial.print("Radio ");Serial.print(activeRadio->num);Serial.println(" Failed");}
-  else{Serial.print("Radio");Serial.print(activeRadio->num);Serial.println(" OK!");}
-  //if the radio is active
-  if(activeRadio->status){
-    //set frequency
-    if(setRadioFreq(activeRadio->frq)){Serial.print("Radio");Serial.print(activeRadio->num);Serial.print(" on ");Serial.print(activeRadio->frq, 3);Serial.println(" MHz");}
-    else{Serial.print("Radio");Serial.print(activeRadio->num);Serial.println(" Set Frequency Failed");}
-    //set to recieve mode
-    radioSetMode(RXmode);}
-  
-  //Radio2 setup
+  if (!activeRadio->status)
+  {
+    Serial.print("Radio ");
+    Serial.print(activeRadio->num);
+    Serial.println(" Failed");
+  }
+  else
+  {
+    Serial.print("Radio");
+    Serial.print(activeRadio->num);
+    Serial.println(" OK!");
+  }
+  // if the radio is active
+  if (activeRadio->status)
+  {
+    // set frequency
+    if (setRadioFreq(activeRadio->frq))
+    {
+      Serial.print("Radio");
+      Serial.print(activeRadio->num);
+      Serial.print(" on ");
+      Serial.print(activeRadio->frq, 3);
+      Serial.println(" MHz");
+    }
+    else
+    {
+      Serial.print("Radio");
+      Serial.print(activeRadio->num);
+      Serial.println(" Set Frequency Failed");
+    }
+    // set to recieve mode
+    radioSetMode(RXmode);
+  }
+
+  // Radio2 setup
   delay(500);
   activeRadio = &radio2;
   activeRadio->status = radioBegin();
-  if(!activeRadio->status){Serial.print("Radio ");Serial.print(activeRadio->num);Serial.println(" Failed");}
-  else{Serial.print("Radio");Serial.print(activeRadio->num);Serial.println(" OK!");}
-  //if the radio is active
-  if(activeRadio->status){
-    //set frequency
-    if(setRadioFreq(activeRadio->frq)){Serial.print("Radio");Serial.print(activeRadio->num);Serial.print(" on ");Serial.print(activeRadio->frq, 3);Serial.println(" MHz");}
-    else{Serial.print("Radio");Serial.print(activeRadio->num);Serial.println(" Set Frequency Failed");}
-    //set to recieve mode
-    radioSetMode(RXmode);}
+  if (!activeRadio->status)
+  {
+    Serial.print("Radio ");
+    Serial.print(activeRadio->num);
+    Serial.println(" Failed");
+  }
+  else
+  {
+    Serial.print("Radio");
+    Serial.print(activeRadio->num);
+    Serial.println(" OK!");
+  }
+  // if the radio is active
+  if (activeRadio->status)
+  {
+    // set frequency
+    if (setRadioFreq(activeRadio->frq))
+    {
+      Serial.print("Radio");
+      Serial.print(activeRadio->num);
+      Serial.print(" on ");
+      Serial.print(activeRadio->frq, 3);
+      Serial.println(" MHz");
+    }
+    else
+    {
+      Serial.print("Radio");
+      Serial.print(activeRadio->num);
+      Serial.println(" Set Frequency Failed");
+    }
+    // set to recieve mode
+    radioSetMode(RXmode);
+  }
 
-  //set active radio based on user settings
-  if(radio1.enable & !radio2.enable){activeRadio = &radio1;}
-  else if(!radio1.enable & radio2.enable){activeRadio = &radio2;}
-  else{activeRadio = &radio1;}
+  // set active radio based on user settings
+  if (radio1.enable & !radio2.enable)
+  {
+    activeRadio = &radio1;
+  }
+  else if (!radio1.enable & radio2.enable)
+  {
+    activeRadio = &radio2;
+  }
+  else
+  {
+    activeRadio = &radio1;
+  }
 
-   /* EEPROM Allocations:
-    Posn 00-19: Sustainer Name
-    Posn 20-23: Latitude Float
-    Posn 24-27: Longitude Float
-    Posn    28: Radio1 Freq
-    Posn 29-48: Booster Name
-    Posn 49-52: Latitude Float
-    Posn 53-56: Longitude Float
-    Posn    57: Radio2 Freq
-    */
+  /* EEPROM Allocations:
+   Posn 00-19: Sustainer Name
+   Posn 20-23: Latitude Float
+   Posn 24-27: Longitude Float
+   Posn    28: Radio1 Freq
+   Posn 29-48: Booster Name
+   Posn 49-52: Latitude Float
+   Posn 53-56: Longitude Float
+   Posn    57: Radio2 Freq
+   */
 
-  //read EEPROM for the rocket name
-  for(byte i = 0; i < sizeof(rocketName); i++){rocketName[i] = EEPROM.read(i);}
-  //Read EEPROM for the sustainer last GPS coordinates
-  for(byte i = 0; i < 4; i++){radioUnion.unionByte[i] = EEPROM.read(20+i);}
+  // read EEPROM for the rocket name
+  for (byte i = 0; i < sizeof(rocketName); i++)
+  {
+    rocketName[i] = EEPROM.read(i);
+  }
+  // Read EEPROM for the sustainer last GPS coordinates
+  for (byte i = 0; i < 4; i++)
+  {
+    radioUnion.unionByte[i] = EEPROM.read(20 + i);
+  }
   lastGPSlat = radioUnion.GPScoord;
-  if(fabs(lastGPSlat) > 90){lastGPSlat = 0.0;}
-  for(byte i = 0; i < 4; i++){radioUnion.unionByte[i] = EEPROM.read(24+i);}
+  if (fabs(lastGPSlat) > 90)
+  {
+    lastGPSlat = 0.0;
+  }
+  for (byte i = 0; i < 4; i++)
+  {
+    radioUnion.unionByte[i] = EEPROM.read(24 + i);
+  }
   lastGPSlon = radioUnion.GPScoord;
-  if(fabs(lastGPSlon) >180){lastGPSlon = 0.0;}
+  if (fabs(lastGPSlon) > 180)
+  {
+    lastGPSlon = 0.0;
+  }
 
-  //configure GPS
+  // configure GPS
   configGPS();
-  
-  //Display the startup screen
+
+  // Display the startup screen
   Serial.println("starting LCD");
   startupLCD();
 
-}//end setup
+} // end setup
 
-void loop() {
+void loop()
+{
 
   boolean msgRX = false;
   boolean pktRX = false;
   boolean goodPacket = false;
 
-  //Serial Print Debug
-  if(micros()-timer > 1000000UL && micros() - timeLastNMEA > 500000){
+  // Serial Print Debug
+  if (micros() - timer > 1000000UL && micros() - timeLastNMEA > 500000)
+  {
     timer = micros();
     Serial.print(F("Waiting for Packet, frequency "));
     Serial.print(readRadioFreq(), 3);
-    Serial.println(" MHz");}
-  
-  //check radios for recieved packet with interrupt
-  if(radio1Pkt || radio2Pkt){
+    Serial.println(" MHz");
+  }
 
-    //select the radio that recieved a packet, if both do radio1 first
-    if(radio1Pkt){activeRadio = &radio1;}
-    else{activeRadio = &radio2;}
+  // check radios for recieved packet with interrupt
+  if (radio1Pkt || radio2Pkt)
+  {
 
-    //set the timers
+    // select the radio that recieved a packet, if both do radio1 first
+    if (radio1Pkt)
+    {
+      activeRadio = &radio1;
+    }
+    else
+    {
+      activeRadio = &radio2;
+    }
+
+    // set the timers
     lastRX = micros();
     activeRadio->lastRX = lastRX;
     timer = lastRX;
 
-    //get the packet from the radio
+    // get the packet from the radio
     radioRecvPkt(activeRadio->dataPacket);
 
-    //get signal strength
+    // get signal strength
     signalStrength = pktRssi;
 
-    //check the callsign
+    // check the callsign
     goodPacket = true;
-    if(activeRadio->FHSS){eventPosn = 0;}
-    for(uint8_t i = 0; i < eventPosn; i++){
-      if(activeRadio->dataPacket[i] != settings.callSign[i]){
+    if (activeRadio->FHSS)
+    {
+      eventPosn = 0;
+    }
+    for (uint8_t i = 0; i < eventPosn; i++)
+    {
+      if (activeRadio->dataPacket[i] != settings.callSign[i])
+      {
         goodPacket = false;
-        if(activeRadio->num == 1){radio1Pkt = false;}
-        else{radio2Pkt = false;}
-        break;}}}
+        if (activeRadio->num == 1)
+        {
+          radio1Pkt = false;
+        }
+        else
+        {
+          radio2Pkt = false;
+        }
+        break;
+      }
+    }
+  }
 
-  //if we have a good packet
-  if(goodPacket){
-    
-    //set event flags
+  // if we have a good packet
+  if (goodPacket)
+  {
+
+    // set event flags
     event = (byte)activeRadio->dataPacket[0];
-    if(settings.debugSerial){
-      if(event != 255){Serial.println("-------Data Packet Received--------");}
-      else{Serial.println("-------Sync Packet Received--------");}
-      Serial.print("Packet on radio");Serial.print(activeRadio->num);Serial.print(", event: ");Serial.println(event);
-      Serial.print("Length: ");Serial.println(len);
-      Serial.print("TimeStamp: ");Serial.println(activeRadio->lastRX);}
-    //determine if it is a sustainer or booster packet
-    if(event < 21){parseSustainer = true;}
-    else if(event == 26 || event == 27 || event == 28){parseSustainer = true;}
-    else if(event != 255 && event < 33){parseBooster = true;}
+    if (settings.debugSerial)
+    {
+      if (event != 255)
+      {
+        Serial.println("-------Data Packet Received--------");
+      }
+      else
+      {
+        Serial.println("-------Sync Packet Received--------");
+      }
+      Serial.print("Packet on radio");
+      Serial.print(activeRadio->num);
+      Serial.print(", event: ");
+      Serial.println(event);
+      Serial.print("Length: ");
+      Serial.println(len);
+      Serial.print("TimeStamp: ");
+      Serial.println(activeRadio->lastRX);
+    }
+    // determine if it is a sustainer or booster packet
+    if (event < 21)
+    {
+      parseSustainer = true;
+    }
+    else if (event == 26 || event == 27 || event == 28)
+    {
+      parseSustainer = true;
+    }
+    else if (event != 255 && event < 33)
+    {
+      parseBooster = true;
+    }
 
-    //Create the SD file
-    if(parseSustainer && !sustainerFileCreated && SDinit){createSustainerFile();}
-    if(parseBooster   && !boosterFileCreated   && SDinit){createBoosterFile();}
-    
-    //sync packet
-    if(event == 255){syncPkt(activeRadio->dataPacket);}
-    
-    //preflight packet
-    else if(event == 0 || event == 30){
-      //parse the preFlight packet
+    // Create the SD file
+    if (parseSustainer && !sustainerFileCreated && SDinit)
+    {
+      createSustainerFile();
+    }
+    if (parseBooster && !boosterFileCreated && SDinit)
+    {
+      createBoosterFile();
+    }
+
+    // sync packet
+    if (event == 255)
+    {
+      syncPkt(activeRadio->dataPacket);
+    }
+
+    // preflight packet
+    else if (event == 0 || event == 30)
+    {
+      // parse the preFlight packet
       preflightPacket(activeRadio->dataPacket);
-      //signal established
+      // signal established
       signalEst = true;
       activeRadio->signalEst = true;
-      //set lost signal time
+      // set lost signal time
       lostSignalTime = 2000000UL;
-      //LCD
-      preflightLCD();}
+      // LCD
+      preflightLCD();
+    }
 
-    //inflight packet
-    else if(event < 26 && event != 28){
-      //set lost signal time
+    // inflight packet
+    else if (event < 26 && event != 28)
+    {
+      // set lost signal time
       lostSignalTime = 2000000UL;
-      
-      //write the last pre-flight packet to the SD card
-      if (SDinit && sustainerPreFlightWrite && parseSustainer){writePreflightData();}
-      if (SDinit && boosterPreFlightWrite   && parseBooster){writePreflightData();}
-      
-      //parse the packet
+
+      // write the last pre-flight packet to the SD card
+      if (SDinit && sustainerPreFlightWrite && parseSustainer)
+      {
+        writePreflightData();
+      }
+      if (SDinit && boosterPreFlightWrite && parseBooster)
+      {
+        writePreflightData();
+      }
+
+      // parse the packet
       inflightPacket(activeRadio->dataPacket);
-      
-      //display to LCD
-      inflightLCD();}
 
-    //postflight packet
-    else if(event == 26 || event == 27 || event == 29 || event == 31){
-      //set lost signal time
+      // display to LCD
+      inflightLCD();
+    }
+
+    // postflight packet
+    else if (event == 26 || event == 27 || event == 29 || event == 31)
+    {
+      // set lost signal time
       lostSignalTime = 35000000UL;
-      //parse the packet
+      // parse the packet
       postflightPacket(activeRadio->dataPacket);
-      //display to LCD
-      postflightLCD();}
-      
-    //error packet
-    else{errorLCD();}
+      // display to LCD
+      postflightLCD();
+    }
+
+    // error packet
+    else
+    {
+      errorLCD();
+    }
 
     parseSustainer = false;
     parseBooster = false;
-    if(activeRadio->num == 1){radio1Pkt = false;}
-    else{radio2Pkt = false;}
+    if (activeRadio->num == 1)
+    {
+      radio1Pkt = false;
+    }
+    else
+    {
+      radio2Pkt = false;
+    }
     goodPacket = false;
-    }//end check Radio2
+  } // end check Radio2
 
-  //On FHSS, if signal was established on the ground but a packet was missed, then move to the next channel
-  if(event == 0 && radio1.FHSS && micros() - radio1.lastHopTime > 2000000UL && radio1.signalEst && radio1.chnlUsed < 3){
+  // On FHSS, if signal was established on the ground but a packet was missed, then move to the next channel
+  if (event == 0 && radio1.FHSS && micros() - radio1.lastHopTime > 2000000UL && radio1.signalEst && radio1.chnlUsed < 3)
+  {
     Serial.println("-------Radio 1 Missed Packet--------");
     activeRadio = &radio1;
-    //signal to move to the synch freq because the necessary lead time on the ground is too long to try and catch the next packet
+    // signal to move to the synch freq because the necessary lead time on the ground is too long to try and catch the next packet
     activeRadio->chnlUsed = 3;
-    hopFreq();}
-    
-  //On FHSS, if signal was established in-flight but a packet was missed, then move to the next channel
-  else if(radio1.FHSS && micros() - radio1.lastHopTime > 630000UL && radio1.signalEst && radio1.chnlUsed < 3){
+    hopFreq();
+  }
+
+  // On FHSS, if signal was established in-flight but a packet was missed, then move to the next channel
+  else if (radio1.FHSS && micros() - radio1.lastHopTime > 630000UL && radio1.signalEst && radio1.chnlUsed < 3)
+  {
     Serial.println("-------Radio 1 Missed Packet--------");
     activeRadio = &radio1;
-    hopFreq();}
-    
-  if(event == 0 && radio2.FHSS && micros() - radio2.lastHopTime > 2000000UL && radio2.signalEst && radio2.chnlUsed < 3){
+    hopFreq();
+  }
+
+  if (event == 0 && radio2.FHSS && micros() - radio2.lastHopTime > 2000000UL && radio2.signalEst && radio2.chnlUsed < 3)
+  {
     Serial.println("-------Radio 1 Missed Packet--------");
     activeRadio = &radio2;
-    //signal to move to the synch freq because the necessary lead time on the ground is too long to try and catch the next packet
+    // signal to move to the synch freq because the necessary lead time on the ground is too long to try and catch the next packet
     activeRadio->chnlUsed = 3;
-    hopFreq();}
-    
-  else if(radio2.FHSS && micros() - radio2.lastHopTime > 630000UL && radio2.signalEst && radio2.chnlUsed < 3){
+    hopFreq();
+  }
+
+  else if (radio2.FHSS && micros() - radio2.lastHopTime > 630000UL && radio2.signalEst && radio2.chnlUsed < 3)
+  {
     Serial.println("-------Radio 2 Missed Packet--------");
     activeRadio = &radio2;
-    hopFreq();}
-      
-  //display lost signal status
-  if(micros() - lastRX > lostSignalTime && signalEst){
+    hopFreq();
+  }
 
-    if(debugSerial){Serial.println(F("Signal Lost!"));}
+  // display lost signal status
+  if (micros() - lastRX > lostSignalTime && signalEst)
+  {
+
+    if (debugSerial)
+    {
+      Serial.println(F("Signal Lost!"));
+    }
 
     /* EEPROM Allocations:
     Posn 00-19: Sustainer Name
@@ -589,44 +767,79 @@ void loop() {
     Posn 53-56: Longitude Float
     Posn    57: Radio2 Freq
     */
-    
-    //Write the last GPS coordinates to EEPROM for later display
-    for(byte i = 0; i < sizeof(rocketName); i++){EEPROM.update(i,rocketName[i]);}
+
+    // Write the last GPS coordinates to EEPROM for later display
+    for (byte i = 0; i < sizeof(rocketName); i++)
+    {
+      EEPROM.update(i, rocketName[i]);
+    }
     radioUnion.GPScoord = lastGPSlat;
-    for(byte i = 0; i < 4; i++){EEPROM.update(i+20,radioUnion.unionByte[i]);}
+    for (byte i = 0; i < 4; i++)
+    {
+      EEPROM.update(i + 20, radioUnion.unionByte[i]);
+    }
     radioUnion.GPScoord = lastGPSlon;
-    for(byte i = 0; i < 4; i++){EEPROM.update(i+24,radioUnion.unionByte[i]);}
-    
-    //sync the SD card
-    if(SDinit && sustainerFileOpen){sustainerFile.sync();}
+    for (byte i = 0; i < 4; i++)
+    {
+      EEPROM.update(i + 24, radioUnion.unionByte[i]);
+    }
 
-    //display last coordinates on LCD
+    // sync the SD card
+    if (SDinit && sustainerFileOpen)
+    {
+      sustainerFile.sync();
+    }
+
+    // display last coordinates on LCD
     signalLostLCD();
-    
-    signalEst = false;}
 
-  //GPS
-  while(Serial2.available() > 0){
-    if(!msgRX){msgRX = true;}
+    signalEst = false;
+  }
+
+  // GPS
+  while (Serial2.available() > 0)
+  {
+    if (!msgRX)
+    {
+      msgRX = true;
+    }
     char c = Serial2.read();
     GPS.encode(c);
-    if(GPSdebug){serialBuffer[serialPosn] = c; serialPosn++;}}
-  if(GPSdebug && msgRX){serialBuffer[serialPosn] = '\0'; Serial.print(serialBuffer); msgRX = false; serialPosn = 0;timeLastNMEA = micros();}
+    if (GPSdebug)
+    {
+      serialBuffer[serialPosn] = c;
+      serialPosn++;
+    }
+  }
+  if (GPSdebug && msgRX)
+  {
+    serialBuffer[serialPosn] = '\0';
+    Serial.print(serialBuffer);
+    msgRX = false;
+    serialPosn = 0;
+    timeLastNMEA = micros();
+  }
 
-  //check LED
-  if(ledLight && micros()-colorStart > 2000000){
+  // check LED
+  if (ledLight && micros() - colorStart > 2000000)
+  {
     byte bright = whiteIntensity;
-    lcd.setBacklight(bright, bright, bright); //Set backlight to white
-    ledLight = false;}
-   
-}//end loop
+    lcd.setBacklight(bright, bright, bright); // Set backlight to white
+    ledLight = false;
+  }
 
-void clearIRQ1(){
+} // end loop
+
+void clearIRQ1()
+{
   noInterrupts();
   radio1Pkt = true;
-  interrupts();}
+  interrupts();
+}
 
-void clearIRQ2(){
+void clearIRQ2()
+{
   noInterrupts();
   radio2Pkt = true;
-  interrupts();}
+  interrupts();
+}
