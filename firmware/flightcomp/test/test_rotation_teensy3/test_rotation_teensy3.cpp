@@ -1,6 +1,6 @@
 /**
  * @file test_rotation_teensy3.cpp
- * @brief Rotation.ino on the Teensy 3.x path: getQuatRotn() in single precision.
+ * @brief Rotation.cpp on the Teensy 3.x path: getQuatRotn() in single precision.
  *
  * Built with -fsingle-precision-constant, as the Teensy 3.x boards are (see
  * test/suite_flags.py), so floating-point literals in the firmware are floats here too.

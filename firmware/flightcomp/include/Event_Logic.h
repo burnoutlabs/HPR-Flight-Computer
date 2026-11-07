@@ -1,5 +1,5 @@
 /**
- * @file Event_Logic.ino
+ * @file Event_Logic.h
  * @brief Main event logic for rocket control. Manages the firing of pyros and
  * event handling during the flight.
  * 
@@ -13,6 +13,18 @@
  * @remark Change log:
  * - 17 JUL 21: Initial breakout created
  */
+#pragma once
+
+#include <Arduino.h>
+#include <EEPROM.h>
+
+#include "declarations.h"
+#include "board.h"
+#include "flightcomp.h"
+#include "SD_Card.h"
+
+// checkEvents() runs on every pass of the flight loop, so it is defined here, always inline,
+// for loop() in flightcomp.cpp to inline it.
 
 
 /**
@@ -22,7 +34,7 @@
  * booster burnout, stage separations, and parachute deployments. It also handles touch down 
  * detection and pyrotechnic control.
  */
-void checkEvents()
+inline __attribute__((always_inline)) void checkEvents()
 {
 
   // Check for timeout

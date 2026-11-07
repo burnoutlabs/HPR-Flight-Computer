@@ -1,5 +1,5 @@
 /**
- * @file RFDx_Driver.ino
+ * @file RFDx_Driver.cpp
  * @brief Driver for the RFD900 serial telemetry radio.
  *
  * @details
@@ -7,6 +7,11 @@
  * sendPktRFD900() writes each packet followed by a line ending. Frequency and power are set on
  * the radio itself, so setPolyMorphs() points those function pointers at dummy functions.
  */
+
+#include <Arduino.h>
+
+#include "RFDx_Driver.h"
+#include "declarations.h"
 
 #define radioPort Serial2
 #define RADIO_UART_SPEED 57600

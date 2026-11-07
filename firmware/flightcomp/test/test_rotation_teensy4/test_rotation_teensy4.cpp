@@ -1,6 +1,6 @@
 /**
  * @file test_rotation_teensy4.cpp
- * @brief Rotation.ino on the Teensy 4.x path: getQuatRotn() in double precision.
+ * @brief Rotation.cpp on the Teensy 4.x path: getQuatRotn() in double precision.
  */
 #define __IMXRT1062__
 

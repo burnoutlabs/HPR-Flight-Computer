@@ -1,7 +1,18 @@
 /**
- * @file Infilght_Recover.ino
+ * @file Infilght_Recover.cpp
  * @brief Implements a recovery system for an altimeter with detailed reset functionality in case of accidental power loss or system reset.
  */
+
+#include <Arduino.h>
+#include <EEPROM.h>
+
+#include "Infilght_Recover.h"
+#include "declarations.h"
+#include "flightcomp.h"
+#include "Bus_Mgmt.h"
+#include "Calibration.h"
+#include "SD_Card.h"
+#include "Speed_Trig.h"
 
 /**
  * @brief Routine to restart the system in-flight in case of accidental power loss or system reset.

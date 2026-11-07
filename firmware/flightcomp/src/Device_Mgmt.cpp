@@ -1,5 +1,5 @@
 /**
- * @file Device_Mgmt.ino
+ * @file Device_Mgmt.cpp
  * @brief Device management: function-pointer setup and sensor orientation.
  *
  * @details
@@ -9,6 +9,16 @@
  * The orient functions remove the calibration bias from raw sensor data and map it onto the
  * rocket's axes; the dummy functions stand in for absent devices.
  */
+
+#include <Arduino.h>
+
+#include "Device_Mgmt.h"
+#include "declarations.h"
+#include "Device_Drivers.h"
+#include "Device_Drivers_External.h"
+#include "RFDx_Driver.h"
+#include "SX127X_Driver.h"
+#include "UBLOX_GNSS_Config.h"
 
 //-----------------------------------------------
 // Written by SparkyVT, TRA #12111, NAR #85720, L3

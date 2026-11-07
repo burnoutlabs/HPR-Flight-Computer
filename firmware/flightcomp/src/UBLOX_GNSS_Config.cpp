@@ -1,11 +1,17 @@
 /*!
- * \file UBLOX_GNSS_Config.ino
+ * \file UBLOX_GNSS_Config.cpp
  * \brief Configuration and power management routines for u-Blox GPS modules.
  *
  * This code provides a set of functions to configure, power-manage, and communicate
  * with u-Blox GPS modules. It includes a collection of helper functions for serial
  * communication, data conversion, and acknowledgment handling.
  */
+
+#include <Arduino.h>
+
+#include "UBLOX_GNSS_Config.h"
+#include "declarations.h"
+#include "Bus_Mgmt.h"
 
 /*!
  * \brief Restore the u-Blox GNSS receiver to factory default settings.

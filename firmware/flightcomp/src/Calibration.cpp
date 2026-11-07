@@ -1,5 +1,5 @@
 /**
- * @file Calibration.ino
+ * @file Calibration.cpp
  * @brief Calibration routines for various sensors.
  * 
  * This file contains functions and routines for calibrating different sensors, 
@@ -21,6 +21,18 @@
  * - 30 DEC 21: Updated magnetometer calibration to account for resetMagGain routine.
  * - 18 APR 22: Major overhaul to account for independent sensors.
  */
+
+#include <Arduino.h>
+#include <EEPROM.h>
+
+#include "Calibration.h"
+#include "declarations.h"
+#include "flightcomp.h"
+
+// serial input characters for setCanardTrim()
+char a;
+char b;
+char d;
 
 /**
  * @brief Calibration routine for IMU and High-G accelerometers.
@@ -1213,10 +1225,6 @@ void baroCalibrate()
   delay(2000);
 
 } // End of barometer calibration
-
-char a;
-char b;
-char d;
 
 /**
  * @brief User-guided calibration for active stabilization and return capability.

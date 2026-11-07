@@ -5,7 +5,7 @@
  * @details
  * Holds the EEPROM address map, the settings, sensor, pin, and flight-state structs, the
  * radio register and packet variables, and the device function pointers that setPolyMorphs()
- * (Device_Mgmt.ino) assigns at startup. The variables are defined, with their initial
+ * (Device_Mgmt.cpp) assigns at startup. The variables are defined, with their initial
  * values, in globals.cpp.
  */
 #pragma once

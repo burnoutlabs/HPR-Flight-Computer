@@ -60,7 +60,7 @@ For large or high-power projects, a commercially available backup computer is st
 - **Pressure Sensor**: MS5611 (recommended), MS5607, MPL3115A2, BMP180, BMP280, or BMP388 (Note: BMP280 & BMP388 incompatible with telemetry due to EMI)
 - **GNSS**: UBLOX M6, M7, M8, M9 (NEO footprint supported in PCB file) or Adafruit Ultimate GPS
 - **LoRa Telemetry**: RFM96W or RFM95W, both capable of TX on 433MHz or 915MHz (433MHz USA: Amateur License Required, EUR: License Free), or an RFD900 serial radio
-- **Other devices**: any accelerometer, gyroscope, magnetometer, high-G accelerometer, barometer, GNSS receiver, or packet radio without a built-in driver can be used through an external library (see `firmware/flightcomp/src/Device_Drivers_External.ino`)
+- **Other devices**: any accelerometer, gyroscope, magnetometer, high-G accelerometer, barometer, GNSS receiver, or packet radio without a built-in driver can be used through an external library (see `firmware/flightcomp/src/Device_Drivers_External.cpp`)
 
 ## GROUND STATION COMPONENTS
 
@@ -91,11 +91,11 @@ pio test -d firmware/flightcomp -e native   # host unit tests
 
 With [just](https://just.systems) installed, `just build` builds every env of both projects, `just test` runs the host unit tests, and `just check` runs the same build and tests as CI. `just --list` shows the other recipes.
 
-The flight computer's unit tests (`firmware/flightcomp/test`, [Unity](https://www.throwtheswitch.org/unity)) build with the host's own C++ compiler in the `native` env, which `pio run` leaves out. They compile the real `.ino` sources under test against small stand-ins for the Teensy core and libraries in `test/shim`. The rotation tests run twice: once on the Teensy 4.x double-precision path, and once on the Teensy 3.x single-precision path, built with `-fsingle-precision-constant` as those boards are.
+The flight computer's unit tests (`firmware/flightcomp/test`, [Unity](https://www.throwtheswitch.org/unity)) build with the host's own C++ compiler in the `native` env, which `pio run` leaves out. They compile the real flight computer sources under test against small stand-ins for the Teensy core and libraries in `test/shim`. The rotation tests run twice: once on the Teensy 4.x double-precision path, and once on the Teensy 3.x single-precision path, built with `-fsingle-precision-constant` as those boards are.
 
 Versions are pinned in each `platformio.ini`: the `teensy` platform 6.0.0, which bundles Teensyduino 1.62 (`framework-arduinoteensy` 1.162.0), TinyGPSPlus 1.0.3 and, for the ground station, SparkFun SerLCD 1.0.9. SdFat, SD, SPI, Wire, i2c_t3, PWMServo and EEPROM come with Teensyduino. The Teensy 3.2 env runs at 96 MHz, Teensyduino's default for that board.
 
-The sources are still Arduino `.ino` tabs, which PlatformIO merges into one translation unit in the same order the Arduino IDE does. Building from the Arduino IDE or arduino-cli is no longer supported: the sketch folders no longer match their main `.ino` names, and CI builds only with PlatformIO.
+The flight computer is plain C++ in PlatformIO's layout: each module is a `.cpp` in `src/` with its declarations in a header of the same name in `include/`. Two exceptions: the SD card module's header is `SD_Card.h`, since `SD.h` is Teensyduino's SD library, and the event logic has only `Event_Logic.h`, because `checkEvents()` is defined there, always inline, for the flight loop (as is `writeSDflightData()` in `SD_Card.h`). `declarations.h` declares the shared types and globals, and `globals.cpp` defines them; `board.h` holds the declarations that differ between Teensy boards. The ground station is still Arduino `.ino` tabs, which PlatformIO merges into one translation unit in the same order the Arduino IDE does. Building from the Arduino IDE or arduino-cli is no longer supported: the sketch folders no longer match their main `.ino` names, and CI builds only with PlatformIO.
 
 `firmware/gndstation/archive` holds earlier ground station sketches for reference. They are not built.
 

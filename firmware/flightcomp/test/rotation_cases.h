@@ -1,6 +1,6 @@
 /**
  * @file rotation_cases.h
- * @brief Rotation.ino tests, shared by the Teensy 4.x (double) and 3.x (float) suites.
+ * @brief Rotation.cpp tests, shared by the Teensy 4.x (double) and 3.x (float) suites.
  *
  * Each suite's .cpp chooses the getQuatRotn() path, includes flightcomp_subset.h,
  * then this file. The cases drive getQuatRotn() and getDCM2DRotn() as the flight
@@ -11,7 +11,7 @@
  *
  * Expected angles come from an independent model: the exact rotation matrix of
  * the same sequence of body-axis rotations, read out with the angle conventions
- * Rotation.ino documents (pitchX/yawY/offVert in tenths of a degree, rollZ in
+ * Rotation.cpp documents (pitchX/yawY/offVert in tenths of a degree, rollZ in
  * whole degrees, unwrapped).
  */
 #pragma once
@@ -104,7 +104,7 @@ static void refRotate(int axis, double angleDeg)
 
 static double refPitchDeg() { return atan2(ref.m[2][1], ref.m[2][2]) * kDegPerRad; }
 static double refYawDeg() { return asin(-ref.m[2][0]) * kDegPerRad; }
-// Rotation.ino's off-vertical: atan(sqrt(tan^2 pitch + tan^2 yaw))
+// Rotation.cpp's off-vertical: atan(sqrt(tan^2 pitch + tan^2 yaw))
 static double refOffVertDeg()
 {
   double tp = tan(refPitchDeg() * kRadPerDeg), ty = tan(refYawDeg() * kRadPerDeg);
@@ -116,7 +116,7 @@ static double refOffVertDeg()
 //-----------------------------------------------------------------------------
 static void resetRotationState()
 {
-  // getQuatRotn() state, to the initial values in Rotation.ino
+  // getQuatRotn() state, to the initial values in Rotation.cpp
   Quat[0] = 0;
   Quat[1] = 1;
   Quat[2] = Quat[3] = Quat[4] = 0;
@@ -246,7 +246,7 @@ void test_quat_roll_moves_tilt_from_pitch_to_yaw()
 
 void test_quat_combined_tilt_about_x_then_y()
 {
-  // offVert is Rotation.ino's atan(sqrt(tan^2 pitch + tan^2 yaw)), 27.6 deg here.
+  // offVert is Rotation.cpp's atan(sqrt(tan^2 pitch + tan^2 yaw)), 27.6 deg here.
   // The true angle off vertical, acos(cos 20.3 x cos 20.3), is 28.4 deg: the two
   // agree only while pitch or yaw is zero. This checks the code as written.
   quatRotate(0, +1, 29);
