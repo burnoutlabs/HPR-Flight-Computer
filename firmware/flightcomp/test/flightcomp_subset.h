@@ -20,10 +20,7 @@
 
 // Objects that flightcomp.cpp defines and Rotation.cpp uses.
 TinyGPSPlus GPS;
-PWMServo canardYaw1;
-PWMServo canardYaw2;
-PWMServo canardPitch3;
-PWMServo canardPitch4;
+PWMServo servos[8];
 
 #include "../src/Speed_Trig.cpp"
 

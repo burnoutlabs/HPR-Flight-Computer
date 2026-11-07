@@ -151,19 +151,19 @@ inline __attribute__((always_inline)) void writeSDflightData()
   // Continuity Data
   dataString[strPosn] = 'C';
   strPosn++;
-  writeBoolData(pyro1.contStatus);
-  writeBoolData(pyro2.contStatus);
-  writeBoolData(pyro3.contStatus);
-  writeBoolData(pyro4.contStatus);
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    writeBoolData(pyros[i].contStatus);
+  }
   dataString[strPosn] = cs;
   strPosn++;
   // Pyro Firing Data
   dataString[strPosn] = 'F';
   strPosn++;
-  writeBoolData(pyro1.fireStatus);
-  writeBoolData(pyro2.fireStatus);
-  writeBoolData(pyro3.fireStatus);
-  writeBoolData(pyro4.fireStatus);
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    writeBoolData(pyros[i].fireStatus);
+  }
   dataString[strPosn] = cs;
   strPosn++;
   writeIntData(pins.firePin);

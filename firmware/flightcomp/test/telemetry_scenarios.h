@@ -25,10 +25,7 @@
 
 // Objects that flightcomp.cpp defines and the sources under test use.
 TinyGPSPlus GPS;
-PWMServo canardYaw1;
-PWMServo canardYaw2;
-PWMServo canardPitch3;
-PWMServo canardPitch4;
+PWMServo servos[8];
 
 #include "../src/Telemetry.cpp"
 

@@ -690,27 +690,17 @@ inline __attribute__((always_inline)) void checkEvents(FlightActions &actions)
       pulsePyro(actions);
     }
     // Turn off the pyros
-    if (pyro1.fireStatus && fltTime.timeCurrent - pyro1.fireStart > settings.fireTime)
+    bool anyFiring = false;
+    for (uint8_t i = 0; i < 4; i++)
     {
-      pushFlightAction(actions, FlightAction::PinLow, pyro1.firePin);
-      pyro1.fireStatus = false;
+      if (pyros[i].fireStatus && fltTime.timeCurrent - pyros[i].fireStart > settings.fireTime)
+      {
+        pushFlightAction(actions, FlightAction::PinLow, pyros[i].firePin);
+        pyros[i].fireStatus = false;
+      }
+      anyFiring = anyFiring || pyros[i].fireStatus;
     }
-    if (pyro2.fireStatus && fltTime.timeCurrent - pyro2.fireStart > settings.fireTime)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro2.firePin);
-      pyro2.fireStatus = false;
-    }
-    if (pyro3.fireStatus && fltTime.timeCurrent - pyro3.fireStart > settings.fireTime)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro3.firePin);
-      pyro3.fireStatus = false;
-    }
-    if (pyro4.fireStatus && fltTime.timeCurrent - pyro4.fireStart > settings.fireTime)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro4.firePin);
-      pyro4.fireStatus = false;
-    }
-    if (!pyro1.fireStatus && !pyro2.fireStatus && !pyro3.fireStatus && !pyro4.fireStatus)
+    if (!anyFiring)
     {
       pyroFire = false;
     }
@@ -771,7 +761,7 @@ inline __attribute__((always_inline)) FlightActions flightStep()
     pushFlightAction(actions, FlightAction::GnssLiftoffTime);
     gnss.maxAlt = 0.0F;
     // if live pyros are detected, turn on the alarm to alert the user that the system is active and may fire pyros
-    if (pyro1.contStatus || pyro2.contStatus || pyro3.contStatus || pyro4.contStatus || settings.testMode)
+    if (pyros[0].contStatus || pyros[1].contStatus || pyros[2].contStatus || pyros[3].contStatus || settings.testMode)
     {
       livePyroAlarm = true;
       pushFlightAction(actions, FlightAction::PrintLivePyroAlarm);

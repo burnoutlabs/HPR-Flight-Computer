@@ -1275,61 +1275,15 @@ void setCanardTrim()
       }
 
       // update trim settings
-      if (a == '1')
+      if (a >= '1' && a <= '8')
       {
-        servo1trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo1 Trim: "));
-        Serial.println(servo1trim);
-        wiggleServo(1);
-      }
-      if (a == '2')
-      {
-        servo2trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo2 Trim: "));
-        Serial.println(servo2trim);
-        wiggleServo(2);
-      }
-      if (a == '3')
-      {
-        servo3trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo3 Trim: "));
-        Serial.println(servo3trim);
-        wiggleServo(3);
-      }
-      if (a == '4')
-      {
-        servo4trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo4 Trim: "));
-        Serial.println(servo4trim);
-        wiggleServo(4);
-      }
-      if (a == '5')
-      {
-        servo5trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo5 Trim: "));
-        Serial.println(servo5trim);
-        wiggleServo(5);
-      }
-      if (a == '6')
-      {
-        servo6trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo6 Trim: "));
-        Serial.println(servo6trim);
-        wiggleServo(6);
-      }
-      if (a == '7')
-      {
-        servo7trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo7 Trim: "));
-        Serial.println(servo7trim);
-        wiggleServo(7);
-      }
-      if (a == '8')
-      {
-        servo8trim += (b == '+' ? 1 : -1);
-        Serial.print(F("Servo8 Trim: "));
-        Serial.println(servo8trim);
-        wiggleServo(8);
+        const byte servo = a - '0';
+        servoTrim[servo - 1] += (b == '+' ? 1 : -1);
+        Serial.print(F("Servo"));
+        Serial.print(servo);
+        Serial.print(F(" Trim: "));
+        Serial.println(servoTrim[servo - 1]);
+        wiggleServo(servo);
       }
     }
 
@@ -1357,33 +1311,21 @@ void setCanardTrim()
   } // end trim update loop
 
   // update the EEPROM
-  EEPROM.update(eeprom.servo1trim, servo1trim);
-  EEPROM.update(eeprom.servo2trim, servo2trim);
-  EEPROM.update(eeprom.servo3trim, servo3trim);
-  EEPROM.update(eeprom.servo4trim, servo4trim);
-  EEPROM.update(eeprom.servo5trim, servo5trim);
-  EEPROM.update(eeprom.servo6trim, servo6trim);
-  EEPROM.update(eeprom.servo7trim, servo7trim);
-  EEPROM.update(eeprom.servo8trim, servo8trim);
+  // servo 1's trim is at eeprom.servo1trim, the others after it
+  for (byte i = 0; i < 8; i++)
+  {
+    EEPROM.update(eeprom.servo1trim + i, servoTrim[i]);
+  }
 
   // display settings to user
   Serial.println(F("FINAL SERVO TRIM SETTINGS"));
-  Serial.print(F("Servo1 Trim: "));
-  Serial.println(servo1trim);
-  Serial.print(F("Servo2 Trim: "));
-  Serial.println(servo2trim);
-  Serial.print(F("Servo3 Trim: "));
-  Serial.println(servo3trim);
-  Serial.print(F("Servo4 Trim: "));
-  Serial.println(servo4trim);
-  Serial.print(F("Servo5 Trim: "));
-  Serial.println(servo5trim);
-  Serial.print(F("Servo6 Trim: "));
-  Serial.println(servo6trim);
-  Serial.print(F("Servo7 Trim: "));
-  Serial.println(servo7trim);
-  Serial.print(F("Servo8 Trim: "));
-  Serial.println(servo8trim);
+  for (byte i = 0; i < 8; i++)
+  {
+    Serial.print(F("Servo"));
+    Serial.print(i + 1);
+    Serial.print(F(" Trim: "));
+    Serial.println(servoTrim[i]);
+  }
 }
 
 /**
@@ -1392,73 +1334,14 @@ void setCanardTrim()
  */
 void wiggleServo(byte servo)
 {
-
-  switch (servo)
+  if (servo < 1 || servo > 8)
   {
-
-  case 1:
-    canardYaw1.write(80);
-    delay(250);
-    canardYaw1.write(100);
-    delay(250);
-    canardYaw1.write(90 - servo1trim);
-    break;
-
-  case 2:
-    canardYaw2.write(80);
-    delay(250);
-    canardYaw2.write(100);
-    delay(250);
-    canardYaw2.write(90 - servo2trim);
-    break;
-
-  case 3:
-    canardPitch3.write(80);
-    delay(250);
-    canardPitch3.write(100);
-    delay(250);
-    canardPitch3.write(90 - servo3trim);
-    break;
-
-  case 4:
-    canardPitch4.write(80);
-    delay(250);
-    canardPitch4.write(100);
-    delay(250);
-    canardPitch4.write(90 - servo4trim);
-    break;
-
-  case 5:
-    actionServo5.write(80);
-    delay(250);
-    actionServo5.write(100);
-    delay(250);
-    actionServo5.write(90 - servo5trim);
-    break;
-
-  case 6:
-    actionServo6.write(80);
-    delay(250);
-    actionServo6.write(100);
-    delay(250);
-    actionServo6.write(90 - servo6trim);
-    break;
-
-  case 7:
-    actionServo7.write(80);
-    delay(250);
-    actionServo7.write(100);
-    delay(250);
-    actionServo7.write(90 - servo7trim);
-    break;
-
-  case 8:
-    actionServo8.write(80);
-    delay(250);
-    actionServo8.write(100);
-    delay(250);
-    actionServo8.write(90 - servo8trim);
-    break;
+    return;
   }
-
+  PWMServo &wiggled = servos[servo - 1];
+  wiggled.write(80);
+  delay(250);
+  wiggled.write(100);
+  delay(250);
+  wiggled.write(90 - servoTrim[servo - 1]);
 } // end void wiggle servo+
