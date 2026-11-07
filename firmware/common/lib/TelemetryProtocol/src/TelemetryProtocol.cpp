@@ -4,6 +4,7 @@
  */
 #include "TelemetryProtocol.h"
 
+#include <math.h>
 #include <string.h>
 
 namespace telemetry
@@ -305,7 +306,16 @@ bool decodeSync(const uint8_t *pkt, uint8_t len, SyncPacket &out)
 
 uint8_t hailChannel(float freqMHz)
 {
-  return (uint8_t)(5 * (freqMHz - 902.300F));
+  // the channel in the list nearest the configured frequency (the lower one on a tie)
+  uint8_t nearest = 0;
+  for (uint8_t i = 1; i < FHSS_CHANNELS; i++)
+  {
+    if (fabsf(fhssChannelMHz[i] - freqMHz) < fabsf(fhssChannelMHz[nearest] - freqMHz))
+    {
+      nearest = i;
+    }
+  }
+  return nearest;
 }
 
 int16_t nextHopIndex(int16_t hop, uint8_t hailChnl)

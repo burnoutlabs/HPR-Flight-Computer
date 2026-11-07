@@ -1,9 +1,143 @@
+/**
+ * @file Parse_Packet.cpp
+ * @brief Handling of each telemetry packet the radios receive.
+ *
+ * The packets are decoded with the shared TelemetryProtocol library, the same code that
+ * defines the format the flight computer sends (V4.7.2): a 6-character callsign, then the
+ * event byte. loop() hands each received packet to processPacket(), which checks the
+ * callsign and dispatches on the event to the parser for the packet type.
+ */
 #include <Arduino.h>
+#include <TelemetryProtocol.h>
 
 #include "declarations.h"
+#include "LCD.h"
 #include "Parse_Packet.h"
 #include "Radio.h"
 #include "SD_Card.h"
+
+// Time between inflight samples, in hundredths of a second: the flight computer sends a
+// packet every 200ms with 4 samples (pktInterval.inflight / pktInterval.samplesPerPkt).
+static const uint16_t INFLIGHT_SAMPLE_INTERVAL_CS = 5;
+
+bool processPacket()
+{
+
+  // every packet from our flight computer starts with its callsign
+  if (!telemetry::callsignMatches(activeRadio->dataPacket, len, settings.callSign))
+  {
+    return false;
+  }
+
+  // set event flags
+  event = (byte)activeRadio->dataPacket[telemetry::EVENT_OFFSET];
+  if (settings.debugSerial)
+  {
+    if (event != telemetry::SYNC_MARKER)
+    {
+      Serial.println("-------Data Packet Received--------");
+    }
+    else
+    {
+      Serial.println("-------Sync Packet Received--------");
+    }
+    Serial.print("Packet on radio");
+    Serial.print(activeRadio->num);
+    Serial.print(", event: ");
+    Serial.println(event);
+    Serial.print("Length: ");
+    Serial.println(len);
+    Serial.print("TimeStamp: ");
+    Serial.println(activeRadio->lastRX);
+  }
+  // determine if it is a sustainer or booster packet
+  if (event < 21)
+  {
+    parseSustainer = true;
+  }
+  else if (event == 26 || event == 27 || event == 28)
+  {
+    parseSustainer = true;
+  }
+  else if (event != telemetry::SYNC_MARKER && event < 33)
+  {
+    parseBooster = true;
+  }
+
+  // Create the SD file
+  if (parseSustainer && !sustainerFileCreated && SDinit)
+  {
+    createSustainerFile();
+  }
+  if (parseBooster && !boosterFileCreated && SDinit)
+  {
+    createBoosterFile();
+  }
+
+  // sync packet
+  if (event == telemetry::SYNC_MARKER)
+  {
+    syncPkt(activeRadio->dataPacket);
+  }
+
+  // preflight packet
+  else if (event == 0 || event == 30)
+  {
+    // parse the preFlight packet
+    preflightPacket(activeRadio->dataPacket);
+    // signal established
+    signalEst = true;
+    activeRadio->signalEst = true;
+    // set lost signal time
+    lostSignalTime = 2000000UL;
+    // LCD
+    preflightLCD();
+  }
+
+  // inflight packet
+  else if (event < 26 && event != 28)
+  {
+    // set lost signal time
+    lostSignalTime = 2000000UL;
+
+    // write the last pre-flight packet to the SD card
+    if (SDinit && sustainerPreFlightWrite && parseSustainer)
+    {
+      writePreflightData();
+    }
+    if (SDinit && boosterPreFlightWrite && parseBooster)
+    {
+      writePreflightData();
+    }
+
+    // parse the packet
+    inflightPacket(activeRadio->dataPacket);
+
+    // display to LCD
+    inflightLCD();
+  }
+
+  // postflight packet
+  else if (event == 26 || event == 27 || event == 29 || event == 31)
+  {
+    // set lost signal time
+    lostSignalTime = 35000000UL;
+    // parse the packet
+    postflightPacket(activeRadio->dataPacket);
+    // display to LCD
+    postflightLCD();
+  }
+
+  // error packet
+  else
+  {
+    errorLCD();
+  }
+
+  parseSustainer = false;
+  parseBooster = false;
+  return true;
+}
 
 void preflightPacket(byte rxPacket[])
 {
@@ -13,51 +147,24 @@ void preflightPacket(byte rxPacket[])
    -----------------------------------------------------*/
 
   // Read data from pre-flight packet
-  pktPosn = eventPosn;
-  event = (byte)rxPacket[pktPosn];
-  pktPosn++; // 1
-  GPSlock = (byte)rxPacket[pktPosn];
-  pktPosn++; // 2
-  contCode = (byte)rxPacket[pktPosn];
-  pktPosn++; // 3
-  for (byte i = 0; i < 20; i++)
+  telemetry::PreflightPacket pkt;
+  if (!telemetry::decodePreflight(rxPacket, len, pkt))
   {
-    rocketName[i] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  } // 23
-  radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 24
-  radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 25
-  baseAlt = radioInt.unionInt;
-  radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 26
-  radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 27
-  baseGPSalt = radioInt.unionInt;
-  for (byte i = 0; i < 4; i++)
-  {
-    radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  } // 31
-  GPSlatitude = radioUnion.GPScoord;
-  for (byte i = 0; i < 4; i++)
-  {
-    radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  } // 35
-  GPSlongitude = radioUnion.GPScoord;
-  radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 36
-  radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 37
-  satNum = radioInt.unionInt;
+    return;
+  }
+  event = pkt.event;
+  GPSlock = pkt.gnssFix;
+  contCode = pkt.contCode;
+  memcpy(rocketName, pkt.rocketName, sizeof(rocketName));
+  baseAlt = pkt.baseAlt;
+  baseGPSalt = pkt.gpsAlt;
+  GPSlatitude = pkt.latitude;
+  GPSlongitude = pkt.longitude;
+  satNum = pkt.satNum;
+
+  // the flight computer hops before every preflight packet: follow it to the next channel
   if (activeRadio->FHSS)
   {
-    activeRadio->nextChnl = (byte)rxPacket[pktPosn];
-    pktPosn++;
-    activeRadio->nextChnl2 = (byte)rxPacket[pktPosn];
-    // set the next channel
     activeRadio->syncFreq = false;
     if (settings.debugSerial)
     {
@@ -82,13 +189,14 @@ void inflightPacket(byte rxPacket[])
                 INFLIGHT PACKET
    -----------------------------------------------------*/
 
-  // parse the GPS data and packet number first, then the samples
-  pktPosn = 52 + eventPosn;
-  radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 52
-  radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 53
-  packetnum = radioInt.unionInt;
+  telemetry::InflightPacket pkt;
+  if (!telemetry::decodeInflight(rxPacket, len, pkt))
+  {
+    return;
+  }
+
+  // the GPS data and packet number first, then the samples
+  packetnum = pkt.packetNum;
 
   if (debugSerial)
   {
@@ -96,30 +204,9 @@ void inflightPacket(byte rxPacket[])
     Serial.println(packetnum);
   }
 
-  if (activeRadio->FHSS)
-  {
-    activeRadio->nextChnl = (byte)rxPacket[pktPosn];
-    pktPosn++;
-    activeRadio->nextChnl2 = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  }
-  radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 54
-  radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-  pktPosn++; // 55
-  GPSalt = radioInt.unionInt;
-  for (byte j = 0; j < 4; j++)
-  {
-    radioUnion.unionByte[j] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  } // 59
-  GPSlatitude = radioUnion.GPScoord;
-  for (byte j = 0; j < 4; j++)
-  {
-    radioUnion.unionByte[j] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  } // 63
-  GPSlongitude = radioUnion.GPScoord;
+  GPSalt = pkt.gpsAlt;
+  GPSlatitude = pkt.latitude;
+  GPSlongitude = pkt.longitude;
 
   // determine GPS lock from coordinates
   if (fabs(GPSlongitude) > 0)
@@ -133,55 +220,32 @@ void inflightPacket(byte rxPacket[])
   }
 
   // parse inflight packet of 4 samples
-  pktPosn = eventPosn;
   strPosn = 0;
-  for (byte i = 0; i < 4; i++)
+  for (byte i = 0; i < telemetry::INFLIGHT_SAMPLES; i++)
   {
 
     // parse the samples
-    event = (byte)rxPacket[pktPosn];
-    pktPosn++; // 1
+    const telemetry::InflightSample &sample = pkt.samples[i];
+    event = sample.event;
     if (!apogee && event >= 4 && event <= 6)
     {
       apogee = true;
     }
-    sampleTime = (byte)rxPacket[pktPosn];
-    pktPosn++; // 2
-    sampleTime += ((byte)rxPacket[pktPosn] << 8);
-    pktPosn++; // 3
-    radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 4
-    radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 5
-    velocity = radioInt.unionInt;
+    // the packet carries no sample time: count samples from the first packet after liftoff
+    sampleTime = (uint16_t)(((packetnum - 1) * telemetry::INFLIGHT_SAMPLES + i) * INFLIGHT_SAMPLE_INTERVAL_CS);
+    velocity = sample.velocity;
     if (!apogee && velocity > maxVelocity)
     {
       maxVelocity = velocity;
     }
-    radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 6
-    radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 7
-    Alt = radioInt.unionInt;
+    Alt = sample.altitude;
     if (!apogee && Alt > maxAltitude)
     {
       maxAltitude = Alt;
     }
-    radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 8
-    radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 9
-    spin = radioInt.unionInt;
-    radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 10
-    radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 11
-    offVert = radioInt.unionInt;
-    radioInt.unionByte[0] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 12
-    radioInt.unionByte[1] = (byte)rxPacket[pktPosn];
-    pktPosn++; // 13
-    accel = radioInt.unionInt;
+    spin = sample.roll;
+    offVert = sample.offVert;
+    accel = sample.accel;
     if (SDinit)
     {
       writeInflightData();
@@ -216,7 +280,7 @@ void inflightPacket(byte rxPacket[])
   {
     Serial.println("Inflight Data Written");
   }
-  // set the next channel
+  // set the next channel: the flight computer hops after every 3rd packet
   if (activeRadio->FHSS)
   {
     activeRadio->syncFreq = false;
@@ -250,41 +314,19 @@ void postflightPacket(byte rxPacket[])
   /*---------------------------------------------------
                 POSTFLIGHT PACKET
    -----------------------------------------------------*/
-  pktPosn = eventPosn + 1;
-  maxAltitude = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  maxAltitude += ((byte)rxPacket[pktPosn] << 8);
-  pktPosn++;
-  maxVelocity = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  maxVelocity += ((byte)rxPacket[pktPosn] << 8);
-  pktPosn++;
-  maxG = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  maxG += ((byte)rxPacket[pktPosn] << 8);
-  pktPosn++;
-  maxGPSalt = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  maxGPSalt += ((byte)rxPacket[pktPosn] << 8);
-  pktPosn++;
-  GPSlock = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  GPSalt = (byte)rxPacket[pktPosn];
-  pktPosn++;
-  GPSalt += ((byte)rxPacket[pktPosn] << 8);
-  pktPosn++;
-  for (byte i = 0; i < 4; i++)
+  telemetry::PostflightPacket pkt;
+  if (!telemetry::decodePostflight(rxPacket, len, pkt))
   {
-    radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
-    pktPosn++;
+    return;
   }
-  GPSlatitude = radioUnion.GPScoord;
-  for (byte i = 0; i < 4; i++)
-  {
-    radioUnion.unionByte[i] = (byte)rxPacket[pktPosn];
-    pktPosn++;
-  }
-  GPSlongitude = radioUnion.GPScoord;
+  maxAltitude = pkt.maxAlt;
+  maxVelocity = pkt.maxVel;
+  maxG = pkt.maxG;
+  maxGPSalt = pkt.maxGpsAlt;
+  GPSlock = pkt.gnssFix;
+  GPSalt = pkt.gpsAlt;
+  GPSlatitude = pkt.latitude;
+  GPSlongitude = pkt.longitude;
 
   // capture the last good GPS coordinates to potentially store later in EEPROM
   if (GPSlock == 1)
@@ -311,5 +353,12 @@ void postflightPacket(byte rxPacket[])
   if (SDinit && parseBooster)
   {
     boosterFile.flush();
+  }
+
+  // the flight computer hops before every postflight packet: follow it to the next channel
+  if (activeRadio->FHSS)
+  {
+    activeRadio->chnlUsed = 0;
+    hopFreq();
   }
 }

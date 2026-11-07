@@ -69,10 +69,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Flight computer unit tests, compiled and run on the host (the `native` env)
+  # Unit tests of each project, compiled and run on the host (the `native` env)
   host-tests:
-    name: flightcomp / host tests
+    name: ${{ matrix.project }} / host tests
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [flightcomp, gndstation]
     steps:
       - uses: actions/checkout@v7
 
@@ -84,13 +88,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-native-${{ env.PLATFORMIO_VERSION }}-${{ hashFiles('firmware/flightcomp/platformio.ini') }}
+          key: platformio-${{ runner.os }}-native-${{ env.PLATFORMIO_VERSION }}-${{ hashFiles('firmware/*/platformio.ini') }}
 
       - name: Install PlatformIO
         run: python -m pip install "platformio==${PLATFORMIO_VERSION}"
 
       - name: Test
-        run: pio test -e native -d firmware/flightcomp
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: pio test -e native -d "firmware/${PROJECT}"
 
   # A single check to mark as required on master, so adding or removing an
   # env or a test job does not mean editing branch protection.

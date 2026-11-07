@@ -22,6 +22,7 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include <TelemetryProtocol.h>
 
 #include "declarations.h"
 #include "Radio.h"
@@ -32,16 +33,9 @@
 float radioFreq[9] = {433.250, 433.500, 433.625, 433.750, 433.875, 434.000, 434.125, 434.250, 434.400};
 
 //---------------------------
-// 915 MHz LoRa channel list on ISM band
+// 915 MHz FHSS: the channel list, hop sequence and hailing channel are the flight
+// computer's, from the shared TelemetryProtocol library
 //---------------------------
-const float FHSSchnl[64] = {
-    902.3, 902.5, 902.7, 902.9, 903.1, 903.3, 903.5, 903.7, 903.9, 904.1,
-    904.3, 904.5, 904.7, 904.9, 905.1, 905.3, 905.5, 905.7, 905.9, 906.1,
-    906.3, 906.5, 906.7, 906.9, 907.1, 907.3, 907.5, 907.7, 907.9, 908.1,
-    908.3, 908.5, 908.7, 908.9, 909.1, 909.3, 909.5, 909.7, 909.9, 910.1,
-    910.3, 910.5, 910.7, 910.9, 911.1, 911.3, 911.5, 911.7, 911.9, 912.1,
-    912.3, 912.5, 912.7, 912.9, 913.1, 913.3, 913.5, 913.7, 913.9, 914.1,
-    914.3, 914.5, 914.7, 914.9};
 
 byte radioMode = 0;
 bool TX = false;
@@ -199,7 +193,7 @@ bool radioBegin()
   // if FHSS, set the user frequency to the closest LoRa channel as the hail frequency
   if (activeRadio->FHSS)
   {
-    activeRadio->hailChnl = (uint8_t)(5 * (activeRadio->frq - 902.300F));
+    activeRadio->hailChnl = telemetry::hailChannel(activeRadio->frq);
     activeRadio->frq = getFreq(activeRadio->hailChnl);
     Serial.print("Radio ");
     Serial.print(activeRadio->num);
@@ -459,25 +453,20 @@ void hopFreq()
   activeRadio->chnlUsed++;
   Serial.print("chnlUsed = ");
   Serial.println(activeRadio->chnlUsed);
-  if (activeRadio->chnlUsed == 1)
+  // up to two hops without hearing the flight computer, following the hop sequence as it does
+  if (activeRadio->chnlUsed < 3)
   {
     hopChnl = activeRadio->nextChnl;
+    activeRadio->nextHop = telemetry::nextHopIndex(activeRadio->nextHop, activeRadio->hailChnl);
+    activeRadio->nextChnl = telemetry::hopSequence[activeRadio->nextHop];
     if (debugSerial)
     {
       Serial.print("Hopping to Channel: ");
       Serial.println(hopChnl);
     }
   }
-  else if (activeRadio->chnlUsed == 2)
-  {
-    hopChnl = activeRadio->nextChnl2;
-    if (debugSerial)
-    {
-      Serial.print("Hopping to Channel: ");
-      Serial.println(hopChnl);
-    }
-  }
-  else if (activeRadio->chnlUsed >= 3)
+  // then wait on the hailing channel for a sync packet
+  else
   {
     hopChnl = activeRadio->hailChnl;
     if (debugSerial)
@@ -502,10 +491,16 @@ void syncPkt(byte rxPacket[])
   activeRadio->signalEst = true;
   activeRadio->syncFreq = false;
   lostSignalTime = 1400000UL;
-  // parse packet
-  activeRadio->chnl1 = (byte)rxPacket[1];
-  activeRadio->nextChnl = (byte)rxPacket[2];
-  activeRadio->nextChnl2 = (byte)rxPacket[3];
+  // parse packet: the flight computer's current channel, and where its next hop is in the
+  // hop sequence
+  telemetry::SyncPacket pkt;
+  if (!telemetry::decodeSync(rxPacket, len, pkt) || pkt.nextHop < 0 || pkt.nextHop >= telemetry::HOP_SEQUENCE_LENGTH)
+  {
+    return;
+  }
+  activeRadio->chnl1 = pkt.currentChannel;
+  activeRadio->nextHop = pkt.nextHop;
+  activeRadio->nextChnl = telemetry::hopSequence[pkt.nextHop];
   activeRadio->chnlUsed = 0;
   hopFreq();
   if (debugSerial)
@@ -528,11 +523,8 @@ void dispPktInfo()
   Serial.print(F(", Next Freq: "));
   Serial.print(getFreq(activeRadio->nextChnl), 3);
   Serial.println("MHz");
-  Serial.print("3rd Chnl: ");
-  Serial.print(activeRadio->nextChnl2);
-  Serial.print(", ");
-  Serial.print(getFreq(activeRadio->nextChnl2), 3);
-  Serial.println("MHz");
+  Serial.print(F("Next Hop: "));
+  Serial.println(activeRadio->nextHop);
 }
 
 float getFreq(byte chnl)
@@ -542,20 +534,20 @@ float getFreq(byte chnl)
 
   if (activeRadio->frq < 800.000F)
   {
-    if (chnl >= sizeof(radioFreq))
+    if (chnl >= sizeof(radioFreq) / sizeof(radioFreq[0]))
     {
-      chnl = sizeof(radioFreq) - 1;
+      chnl = sizeof(radioFreq) / sizeof(radioFreq[0]) - 1;
     }
     frq = radioFreq[chnl];
   }
 
   else
   {
-    if (chnl >= sizeof(FHSSchnl))
+    if (chnl >= telemetry::FHSS_CHANNELS)
     {
-      chnl = sizeof(FHSSchnl) - 1;
+      chnl = telemetry::FHSS_CHANNELS - 1;
     }
-    frq = FHSSchnl[chnl];
+    frq = telemetry::fhssChannelMHz[chnl];
   }
 
   return frq;

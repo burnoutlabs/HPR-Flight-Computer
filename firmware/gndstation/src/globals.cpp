@@ -212,5 +212,3 @@ const String pyroTable[] = {
 
 byte greenCont[5] = {5, 6, 7, 8, 9};
 byte redCont[5] = {0, 1, 2, 3, 4};
-
-uint8_t eventPosn = 0;

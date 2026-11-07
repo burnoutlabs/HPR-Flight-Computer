@@ -127,7 +127,8 @@ bool decodeInflight(const uint8_t *pkt, uint8_t len, InflightPacket &out);
 bool decodePostflight(const uint8_t *pkt, uint8_t len, PostflightPacket &out);
 bool decodeSync(const uint8_t *pkt, uint8_t len, SyncPacket &out);
 
-/// The FHSS hailing channel for a configured frequency in MHz.
+/// The FHSS hailing channel for a configured frequency in MHz: the channel in fhssChannelMHz
+/// nearest to it, so a frequency on the list maps to its own channel.
 uint8_t hailChannel(float freqMHz);
 /// The hop-sequence index after `hop`, wrapping at the end and skipping one entry that is
 /// the hailing channel, so data packets never go out on it.

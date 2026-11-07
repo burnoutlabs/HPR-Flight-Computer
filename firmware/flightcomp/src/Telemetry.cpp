@@ -78,8 +78,8 @@
  *   - A separate timer, started at touchdown or timeout, sends a sync packet every 10 seconds.
  *   - Continue until the system is turned off.
  *
- * @note The ground station in src/gndstation (V10_2) predates this strategy: it expects the earlier
- *       sync packet layout (current and next two channels) and a 64-channel list starting at 902.3MHz.
+ * The ground station (firmware/gndstation) decodes these packets and follows the hop sequence with
+ * the same TelemetryProtocol library.
  */
 
 using telemetry::fhssChannelMHz;

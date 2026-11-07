@@ -25,6 +25,6 @@ fmt:
 fmt-check:
     rc=0; for f in firmware/*/src/*.cpp firmware/*/include/*.h firmware/common/lib/*/src/*; do clang-format --dry-run --Werror --assume-filename=x.cpp "$f" || rc=1; done; exit $rc
 
-[doc("Run the flight computer's host unit tests (PlatformIO native env)")]
+[doc("Run the host unit tests of both projects (PlatformIO native env)")]
 test:
-    {{ pio }} test -e native -d firmware/flightcomp
+    for p in {{ projects }}; do {{ pio }} test -e native -d "$p"; done
