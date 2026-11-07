@@ -1,6 +1,6 @@
 /**
  * @file flightcomp.h
- * @brief Setup, the flight loop, and the pyro, beeper, baro and timer helpers in flightcomp.cpp.
+ * @brief Setup, the flight loop, and the beeper, continuity and timer helpers in flightcomp.cpp.
  */
 #pragma once
 
@@ -28,10 +28,7 @@ void setup(void);
 void loop(void);
 void parseBeep(uint32_t value, uint8_t array[], uint8_t arrayLen);
 void checkPyroContinuity();
-void firePyros(char event);
-void pulsePyro();
 void readEEPROMsettings();
-void processBaroSamp();
 void clearIRQ();
 void timerBuildPkt();
 void timerSyncPkt();
