@@ -1,10 +1,16 @@
 /**
  * @file Startup.cpp
- * @brief setup(), and the pyro continuity check that setup() and the preflight loop share.
+ * @brief setup(), its initialization steps, and the pyro continuity check that setup() and the
+ * preflight loop share.
  *
  * @details
+ * setup() runs the steps below in order. The ones declared in Startup.h bring up hardware that
+ * the in-flight recovery, rapidReset() (Infilght_Recover.cpp), brings up too; the static ones are
+ * setup()'s alone (bench test mode, the preflight reports, the pad calibration).
+ *
  * setup() was in flightcomp.cpp beside loop(). It is in its own file so that the host tests can
- * build it against the stand-ins in test/shim and compare it with the code it came from.
+ * build it against the stand-ins in test/shim and compare it with the code it came from
+ * (test_setup_neutral).
  */
 
 #include <EEPROM.h>
@@ -22,48 +28,12 @@
 #include "Startup.h"
 #include "Telemetry.h"
 
-/*!
- * @brief Initializes the flight computer setup.
- * 
- * This function configures the system by initializing sensors, setting global variables, 
- * and reading configurations from EEPROM.
+/**
+ * @brief Read the hardware settings from EEPROM: the pins, the device IDs, bus types and bus numbers,
+ * the call sign and the hardware ID.
  */
-void setup(void)
+void readHardwareSettingsEEPROM()
 {
-
-  Serial.begin(38400);
-
-  delay(500);
-
-  // check to see if we are restarting from a powerloss
-  // if so, then we need to rapidly get the system back up and going
-  // call the rapidReset routine and immediately exit void setup
-  uint8_t lastEvent = EEPROM.read(eeprom.lastEvent);
-  if (lastEvent != 27)
-  {
-    EEPROM.update(eeprom.lastEvent, 27);
-    lastEvent = 27;
-  }
-  settings.inflightRecover = EEPROM.read(eeprom.inflightRecover);
-  if (settings.inflightRecover > 0 && (lastEvent < 24 && lastEvent != 6 && lastEvent != 7))
-  {
-
-    // execute the rapid recovery routine
-    Serial.print("Rapid Reset Initiated, setting: ");
-    Serial.println(settings.inflightRecover);
-    if (rapidReset())
-    {
-      // exit setup and immediately re-enter the loop
-      return;
-    }
-  }
-
-  // Start SD card
-  beginSD();
-
-  // if an EEPROM settings file exists on the SD card, read it and store it into EEPROM
-  parseEEPROMsettingsSD();
-
   // Read pin settings from EEPROM
   Serial.print(F("Reading EEPROM..."));
   pins.accelCS = EEPROM.read(eeprom.accelCSpin);
@@ -134,17 +104,14 @@ void setup(void)
   settings.HWid[4] = (char)EEPROM.read(eeprom.HWunitNum);
   settings.HWid[5] = '\0';
   Serial.println(F("complete!"));
+}
 
-  // check for unitialized EEPROM
-  if (sensors.accel == 255)
-  {
-    Serial.println("WARNING: SYSTEM HARDWARE SETTINGS ARE UNITIALIZED! SYSTEM CANNOT CONTINUE UNTIL HARDWARE DEVICES, BUSES, AND PIN VALUES ARE SET");
-    Serial.println("PLEASE LOAD EEPROMsettings.txt ONTO THE SD CARD ROOT TO PROCEED");
-    while (1)
-    {
-    }
-  }
-
+/**
+ * @brief Set the pin modes, deselect the radio and high-G accelerometer, and hold the pyro firing pins
+ * low.
+ */
+void setPinModes()
+{
   // Set the mode of the output pins
   pinMode(pins.nullCont, INPUT);
   pinMode(pins.nullFire, INPUT);
@@ -169,7 +136,13 @@ void setup(void)
   digitalWrite(pins.pyro2Fire, LOW);
   digitalWrite(pins.pyro3Fire, LOW);
   digitalWrite(pins.pyro4Fire, LOW);
+}
 
+/**
+ * @brief Select the GNSS serial port and start it at the receiver's baud rate.
+ */
+void beginGnssSerial()
+{
   // Start Harware Serial communication
   setHWSERIAL();
   if (sensors.GNSS == 3)
@@ -182,21 +155,13 @@ void setup(void)
     HWSERIAL->begin(9600);
     Serial.println("Starting HWSerial at 9600 baud");
   }
+}
 
-  // check if the test mode button is being held
-  digitalWrite(pins.testGnd, LOW);
-  delay(50);
-  if (digitalRead(pins.testRead) == LOW)
-  {
-    settings.testMode = true;
-    Serial.println(F("------------------------------------------------------------"));
-    Serial.println(F("Bench-Test Mode Confirmed"));
-    Serial.println(F("Press the button again to calibrate the accelerometers."));
-    Serial.println(F("Enter 'b' into the serial monitor to calibrate the barometer"));
-    Serial.println(F("Enter 'c' into the serial monitor to adjust the canard trims"));
-    Serial.println(F("------------------------------------------------------------"));
-  }
-
+/**
+ * @brief Set the ADC resolution for the battery and the analog high-G accelerometer.
+ */
+void setAnalogResolution()
+{
 // setup the ADC for sampling the battery and ADXL377 if present
 #if defined(__MK66FX1M0__) || defined(__MK64FX512__) || defined(__MK20DX256__)
   // 16 bit for Teensy3.5 and 3.6
@@ -207,10 +172,13 @@ void setup(void)
   adcConvert = 1.0F / 4096.0F;
   ADCmidValue = 2048;
 #endif
+}
 
-  // read the flight settings from the SD card
-  readFlightSettingsSD();
-
+/**
+ * @brief Point the device functions at the configured drivers (setPolyMorphs()) and start the sensors.
+ */
+void beginSensors()
+{
   // set the function pointers
   setPolyMorphs();
 
@@ -221,26 +189,14 @@ void setup(void)
   sensors.statusMag = beginMag();
   sensors.statusHighG = beginHighG();
   sensors.statusBaro = beginBaro();
+}
 
-  // check to see if a critical senor failed the startup test - if so, give an audible warning
-  bool sensorsOK = sensors.statusAccel & sensors.statusGyro & sensors.statusHighG & sensors.statusBaro;
-  // halt progress and give an audible warning once per second
-  if (!sensorsOK)
-  {
-    Serial.println("Sensor Failure! Cannot proceed to flight");
-  }
-  while (!sensorsOK)
-  {
-    for (uint8_t i = 0; i < 20; i++)
-    {
-      digitalWrite(pins.beep, HIGH);
-      delay(12);
-      digitalWrite(pins.beep, LOW);
-      delay(13);
-    }
-    delay(1000);
-  }
-
+/**
+ * @brief Set the accelerometer 1 g counts and the liftoff trigger, and convert the accelerometer gains
+ * to m/s^2.
+ */
+void scaleSensorGains()
+{
   // set Accelerometer G level
   g = (int16_t)(1.0 / accel.gainX);
   accel.gainX *= 9.80665;
@@ -255,7 +211,13 @@ void setup(void)
   highG.gainX *= 9.80665;
   highG.gainY *= 9.80665;
   highG.gainZ *= 9.80665;
+}
 
+/**
+ * @brief Power and start the radio, and set up telemetry if it is enabled.
+ */
+void beginRadioLink()
+{
   // Initialize the radio
   // if the Adafruit RFM9XW board is used, make sure its on
   if (pins.radioEN != pins.nullCont)
@@ -277,7 +239,13 @@ void setup(void)
   {
     Serial.println("Radio Disabled!");
   }
+}
 
+/**
+ * @brief Hold the user settings to their safe limits.
+ */
+void limitSettings()
+{
   // safety override of user settings
   if (settings.apogeeDelay > 5000000UL)
   {
@@ -367,7 +335,13 @@ void setup(void)
   {
     settings.TXfreq = 914.900F;
   } // cannot be above 915MHz ISM band
+}
 
+/**
+ * @brief Store the user settings in EEPROM.
+ */
+static void writeSettingsEEPROM()
+{
   // Update the EEPROM with the new settings
   EEPROM.update(eeprom.fltProfile, settings.fltProfile);
   EEPROM.update(eeprom.units, settings.units);
@@ -446,7 +420,13 @@ void setup(void)
   }
   EEPROM.update(eeprom.stableRotn, settings.stableRotn);
   EEPROM.update(eeprom.stableVert, settings.stableVert);
+}
 
+/**
+ * @brief Give each pyro channel its function and pins, not firing.
+ */
+void configurePyroChannels()
+{
   // configure pyro outupts
   pyro1.func = settings.pyro1Func;
   pyro1.contPin = pins.pyro1Cont;
@@ -468,28 +448,14 @@ void setup(void)
   pyro4.firePin = pins.pyro4Fire;
   pyro4.fireStatus = false;
   pyro4.fireStart = 0UL;
+}
 
-  if (settings.testMode)
-  {
-    Serial.print(F("Flight Profile: "));
-    Serial.println(settings.fltProfile);
-    Serial.print(F("Pyro 4 Function: "));
-    Serial.println(pyro4.func);
-    Serial.print(F("Pyro 3 Function: "));
-    Serial.println(pyro3.func);
-    Serial.print(F("Pyro 2 Function: "));
-    Serial.println(pyro2.func);
-    Serial.print(F("Pyro 1 Function: "));
-    Serial.println(pyro1.func);
-  }
-
-  // check for silent mode
-  if (settings.testMode && settings.silentMode)
-  {
-    pins.beep = pins.nullCont;
-    Serial.println(F("Silent Mode Confirmed"));
-  }
-
+/**
+ * @brief Set the radio's frequency and power (lowest power on a dedicated 915 MHz channel), or with
+ * telemetry off, power the radio down or put it to sleep.
+ */
+void configureRadio()
+{
   // setup the radio, default 70cm band
   if (settings.TXenable)
   {
@@ -539,179 +505,54 @@ void setup(void)
       Serial.println(F("Telemetry OFF!"));
     }
   }
+}
 
-  // setup servos if enabled
-  if (settings.stableRotn || settings.stableVert)
-  {
+/**
+ * @brief Attach the four canard servos and read their trims from EEPROM.
+ */
+void attachServos()
+{
+  // attach the servos
+  canardYaw1.attach(pins.servo1);
+  canardYaw2.attach(pins.servo2);
+  canardPitch3.attach(pins.servo3);
+  canardPitch4.attach(pins.servo4);
 
-    if (settings.testMode)
-    {
-      Serial.println(F("ACTIVE STABILIZATION ENABLED"));
-    }
+  // read the trim settings from EEPROM
+  servo1trim = (int8_t)EEPROM.read(eeprom.servo1trim);
+  servo2trim = (int8_t)EEPROM.read(eeprom.servo2trim);
+  servo3trim = (int8_t)EEPROM.read(eeprom.servo3trim);
+  servo4trim = (int8_t)EEPROM.read(eeprom.servo4trim);
+}
 
-    // enable serial plotting
-    GPSecho = false;
-    radioDebug = false;
+/**
+ * @brief Drive the servo pins low so that stray voltages cannot move a servo.
+ */
+static void disableServos()
+{
+  pinMode(pins.servo3, OUTPUT);
+  pinMode(pins.servo4, OUTPUT);
+  pinMode(pins.servo5, OUTPUT);
+  pinMode(pins.servo6, OUTPUT);
+  pinMode(pins.servo7, OUTPUT);
+  pinMode(pins.servo8, OUTPUT);
 
-    // attach the servos
-    canardYaw1.attach(pins.servo1);
-    canardYaw2.attach(pins.servo2);
-    canardPitch3.attach(pins.servo3);
-    canardPitch4.attach(pins.servo4);
+  digitalWrite(pins.servo1, LOW);
+  digitalWrite(pins.servo2, LOW);
+  digitalWrite(pins.servo3, LOW);
+  digitalWrite(pins.servo4, LOW);
+  digitalWrite(pins.servo5, LOW);
+  digitalWrite(pins.servo6, LOW);
+  digitalWrite(pins.servo7, LOW);
+  digitalWrite(pins.servo8, LOW);
+}
 
-    // read the trim settings from EEPROM
-    servo1trim = (int8_t)EEPROM.read(eeprom.servo1trim);
-    servo2trim = (int8_t)EEPROM.read(eeprom.servo2trim);
-    servo3trim = (int8_t)EEPROM.read(eeprom.servo3trim);
-    servo4trim = (int8_t)EEPROM.read(eeprom.servo4trim);
-    if (settings.testMode)
-    {
-      Serial.print(F("Servo1 Trim: "));
-      Serial.println(servo1trim);
-      Serial.print(F("Servo2 Trim: "));
-      Serial.println(servo2trim);
-      Serial.print(F("Servo3 Trim: "));
-      Serial.println(servo3trim);
-      Serial.print(F("Servo4 Trim: "));
-      Serial.println(servo4trim);
-    }
-
-    // Test canards
-    canardYaw1.write(120 - servo1trim);
-    canardYaw2.write(120 - servo2trim);
-    canardPitch3.write(120 - servo3trim);
-    canardPitch4.write(120 - servo4trim);
-    delay(1000);
-    canardYaw1.write(60 - servo1trim);
-    canardYaw2.write(60 - servo2trim);
-    canardPitch3.write(60 - servo3trim);
-    canardPitch4.write(60 - servo4trim);
-    delay(1000);
-    canardYaw1.write(90 - servo1trim);
-    canardYaw2.write(90 - servo2trim);
-    canardPitch3.write(90 - servo3trim);
-    canardPitch4.write(90 - servo4trim);
-  }
-
-  // otherwise disable the servos and ensure that stray voltages do not cause any attached servos to move
-  else
-  {
-    pinMode(pins.servo1, OUTPUT);
-    pinMode(pins.servo2, OUTPUT);
-    pinMode(pins.servo3, OUTPUT);
-    pinMode(pins.servo4, OUTPUT);
-    pinMode(pins.servo5, OUTPUT);
-    pinMode(pins.servo6, OUTPUT);
-    pinMode(pins.servo7, OUTPUT);
-    pinMode(pins.servo8, OUTPUT);
-
-    digitalWrite(pins.servo1, LOW);
-    digitalWrite(pins.servo2, LOW);
-    digitalWrite(pins.servo3, LOW);
-    digitalWrite(pins.servo4, LOW);
-    digitalWrite(pins.servo5, LOW);
-    digitalWrite(pins.servo6, LOW);
-    digitalWrite(pins.servo7, LOW);
-    digitalWrite(pins.servo8, LOW);
-  }
-
-  // signal if in test-mode
-  if (settings.testMode)
-  {
-
-    Serial.println(F("Signaling Test Mode"));
-    beep_counter = 0;
-    beep_delay = long_beep_delay;
-
-    // initiate the 7 beeps to signal test mode
-    while (beep_counter < 8)
-    {
-
-      fltTime.tmClock = micros();
-
-      // Look for the user to release the button
-      if (digitalRead(pins.testRead) == HIGH)
-      {
-        settings.testMode = false;
-        delay(50);
-      }
-
-      // Look for the user to put it into accelerometer calibration mode or barometer calibration mode
-      if (digitalRead(pins.testRead) == LOW && !settings.testMode)
-      {
-        delay(50); // necessary because sometimes when the button is released it bounces back
-        if (digitalRead(pins.testRead) == LOW)
-        {
-          settings.calibrationMode = true;
-          settings.testMode = true;
-          beep_counter = 8;
-          digitalWrite(pins.beep, LOW);
-          beep = false;
-        }
-      }
-
-      // Look for the user to enter barometer calibration mode by entering into the serial monitor
-      if (Serial.available() > 0)
-      {
-        userInput = Serial.read();
-        if (userInput == 'b')
-        {
-          baroCalibrate();
-        }
-        if (userInput == 'c')
-        {
-          setCanardTrim();
-        }
-        while (Serial.available() > 0)
-        {
-          userInput = Serial.read();
-        }
-      }
-
-      // starts the beep
-      if (!beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
-      {
-        digitalWrite(pins.beep, HIGH);
-        timeBeepStart = fltTime.tmClock;
-        beep = true;
-        beep_counter++;
-      }
-
-      // stops the beep
-      if (beep && (fltTime.tmClock - timeBeepStart > 500000UL))
-      {
-        digitalWrite(pins.beep, LOW);
-        timeBeepStart = 0UL;
-        timeLastBeepEnd = fltTime.tmClock;
-        beep = false;
-      }
-    } // end while
-
-    // Reset variables
-    beep_counter = 0;
-    timeBeepStart = 0UL;
-    timeLastBeepEnd = 0UL;
-    fltTime.tmClock = 0UL;
-    if (!settings.calibrationMode)
-    {
-      settings.testMode = true;
-    }
-  } // end testMode
-
-  // calibration mode
-  if (settings.calibrationMode)
-  {
-    accelCalibrate();
-  } // end calibration mode
-
-  // Calibrate the magnetometer
-  if (magCalibrateMode == 1)
-  {
-    magCalibrate();
-  }
-  // set the trigger for the magnetic switch
-  magTrigger = 3000;
-
+/**
+ * @brief Read the sensor biases and barometer offsets from EEPROM, zeroing any that were never
+ * written.
+ */
+void readCalibrationEEPROM()
+{
   // read the bias from EEPROM
   calUnion.calByte[0] = EEPROM.read(eeprom.accelBiasX);
   calUnion.calByte[1] = EEPROM.read(eeprom.accelBiasX + 1);
@@ -839,192 +680,103 @@ void setup(void)
     }
     mag.biasX = mag.biasY = mag.biasZ = 0;
   }
+}
 
-  // output the read values
-  if (settings.testMode)
-  {
-    Serial.println(F("Calibrataion values read from EEPROM:"));
-    Serial.print(F("accel.biasX: "));
-    Serial.println(accel.biasX);
-    Serial.print(F("accel.biasY: "));
-    Serial.println(accel.biasY);
-    Serial.print(F("accel.biasZ: "));
-    Serial.println(accel.biasZ);
-    Serial.print(F("gyro.biasX: "));
-    Serial.println(gyro.biasX);
-    Serial.print(F("gyro.biasY: "));
-    Serial.println(gyro.biasY);
-    Serial.print(F("gyro.biasZ: "));
-    Serial.println(gyro.biasZ);
-    Serial.print(F("highG.biasX: "));
-    Serial.println(highG.biasX);
-    Serial.print(F("highG.biasY: "));
-    Serial.println(highG.biasY);
-    Serial.print(F("highG.biasZ: "));
-    Serial.println(highG.biasZ);
-    Serial.print(F("mag.biasX: "));
-    Serial.println(mag.biasX);
-    Serial.print(F("mag.biasY: "));
-    Serial.println(mag.biasY);
-    Serial.print(F("mag.biasZ: "));
-    Serial.println(mag.biasZ);
-    Serial.print(F("baro.tempOffset: "));
-    Serial.println(baro.tempOffset, 1);
-    Serial.print(F("baro.pressOffset: "));
-    Serial.println(baro.pressOffset, 2);
-  }
-
-  // read the orientation variables from EEPROM
-  readOrientation();
-
-  // display orientation values from EEPROM
-  if (settings.testMode)
-  {
-    Serial.print(F("accel.X is pointed to real world: "));
-    Serial.print((accel.dirX == 1) ? '+' : '-');
-    Serial.println(accel.orientX);
-    Serial.print(F("accel.Y is pointed to real world: "));
-    Serial.print((accel.dirY == 1) ? '+' : '-');
-    Serial.println(accel.orientY);
-    Serial.print(F("accel.Z is pointed to real world: "));
-    Serial.print((accel.dirZ == 1) ? '+' : '-');
-    Serial.println(accel.orientZ);
-    Serial.print(F("gyro.X is pointed to real world: "));
-    Serial.print((gyro.dirX == 1) ? '+' : '-');
-    Serial.println(gyro.orientX);
-    Serial.print(F("gyro.Y is pointed to real world: "));
-    Serial.print((gyro.dirY == 1) ? '+' : '-');
-    Serial.println(gyro.orientY);
-    Serial.print(F("gyro.Z is pointed to real world: "));
-    Serial.print((gyro.dirZ == 1) ? '+' : '-');
-    Serial.println(gyro.orientZ);
-    Serial.print(F("mag.X is pointed to real world: "));
-    Serial.print((mag.dirX == 1) ? '+' : '-');
-    Serial.println(mag.orientX);
-    Serial.print(F("mag.Y is pointed to real world: "));
-    Serial.print((mag.dirY == 1) ? '+' : '-');
-    Serial.println(mag.orientY);
-    Serial.print(F("mag.Z is pointed to real world: "));
-    Serial.print((mag.dirZ == 1) ? '+' : '-');
-    Serial.println(mag.orientZ);
-    Serial.print(F("highG.X is pointed to real world: "));
-    Serial.print((highG.dirX == 1) ? '+' : '-');
-    Serial.println(highG.orientX);
-    Serial.print(F("highG.Y is pointed to real world: "));
-    Serial.print((highG.dirY == 1) ? '+' : '-');
-    Serial.println(highG.orientY);
-    Serial.print(F("highG.Z is pointed to real world: "));
-    Serial.print((highG.dirZ == 1) ? '+' : '-');
-    Serial.println(highG.orientZ);
-  }
-
+/**
+ * @brief Bench test mode: low radio power and short times and thresholds.
+ */
+static void applyBenchTestOverrides()
+{
   // Overrides for bench test mode
-  if (settings.testMode)
+  if (settings.TXenable)
   {
-    if (settings.TXenable)
-    {
-      settings.TXpwr = 2;
-      setRadioPWR(settings.TXpwr); // lowest power setting
-      Serial.print(F("Radio Power Reduced for Bench Test Mode: "));
-      Serial.println(settings.TXpwr);
-    }
-    fltTime.detectLiftoffTime = 10000UL; // 0.01s
-    settings.setupTime = 3000UL;         // 3s startup time
-    settings.apogeeDelay = 1000000UL;    // 1s apogee delay
-    settings.rcdTime = 15000000UL;       // 15s record time
-    if (settings.stableRotn || settings.stableVert)
-    {
-      settings.rcdTime = 30000000UL;
-    }                          // 30s of record time for serial plotting
-    gTrigger = (int)(1.5 * g); // 1.5G trigger
-    baro.maxAlt = 11101 / unitConvert;
-    maxVelocity = 202 / unitConvert;
-    pktInterval.postFlight = 1000000UL;
-    thresholdVel = 15.5F;
-    clearRailTime = 20000UL;
-    settings.magSwitchEnable = false;
+    settings.TXpwr = 2;
+    setRadioPWR(settings.TXpwr); // lowest power setting
+    Serial.print(F("Radio Power Reduced for Bench Test Mode: "));
+    Serial.println(settings.TXpwr);
   }
-
-  // Create and open the next file on the SD card
-  createNextFileSD();
-
-  // check continuity
-  checkPyroContinuity();
-
-  // report continuity results
-  if (settings.testMode)
+  fltTime.detectLiftoffTime = 10000UL; // 0.01s
+  settings.setupTime = 3000UL;         // 3s startup time
+  settings.apogeeDelay = 1000000UL;    // 1s apogee delay
+  settings.rcdTime = 15000000UL;       // 15s record time
+  if (settings.stableRotn || settings.stableVert)
   {
-    Serial.print("Pyro4 Continuity: ");
-    Serial.println((pyro4.contStatus) ? "Y" : "N");
-    Serial.print("Pyro3 Continuity: ");
-    Serial.println((pyro3.contStatus) ? "Y" : "N");
-    Serial.print("Pyro2 Continuity: ");
-    Serial.println((pyro2.contStatus) ? "Y" : "N");
-    Serial.print("Pyro1 Continuity: ");
-    Serial.println((pyro1.contStatus) ? "Y" : "N");
-    Serial.print(F("Reporting continuity code: "));
-    Serial.println(cont.beepCode);
-  }
+    settings.rcdTime = 30000000UL;
+  } // 30s of record time for serial plotting
+  gTrigger = (int)(1.5 * g); // 1.5G trigger
+  baro.maxAlt = 11101 / unitConvert;
+  maxVelocity = 202 / unitConvert;
+  pktInterval.postFlight = 1000000UL;
+  thresholdVel = 15.5F;
+  clearRailTime = 20000UL;
+  settings.magSwitchEnable = false;
+}
 
-  // set the beep delay and preflight beep code
-  beep_delay = long_beep_delay;
-  beepCode = cont.beepCode;
-
+/**
+ * @brief Beep the continuity code until the magnet is sensed.
+ */
+static void waitForMagneticSwitch()
+{
   // if the magnetic switch is enabled, beep the continuity code until the magnet is sensed
-  if (settings.magSwitchEnable)
+  delay(250);
+  uint8_t ii = 0;
+  bool magDetect = false;
+  // clear out the FIFO
+  for (uint8_t i = 0; i < 10; i++)
   {
-    delay(250);
-    uint8_t ii = 0;
-    bool magDetect = false;
-    // clear out the FIFO
-    for (uint8_t i = 0; i < 10; i++)
+    getMag();
+    delay(100);
+  }
+  while (!magDetect)
+  {
+    ii = 0;
+    if (cont.error)
     {
-      getMag();
-      delay(100);
-    }
-    while (!magDetect)
-    {
-      ii = 0;
-      if (cont.error)
-      {
-        // signal the continuity error alarm
-        for (uint8_t i = 0; i < 20; i++)
-        {
-          digitalWrite(pins.beep, HIGH);
-          delay(12);
-          digitalWrite(pins.beep, LOW);
-          delay(13);
-        }
-        delay(250);
-      }
-      while (!magDetect && ii < beepCode)
+      // signal the continuity error alarm
+      for (uint8_t i = 0; i < 20; i++)
       {
         digitalWrite(pins.beep, HIGH);
-        delay(250);
+        delay(12);
         digitalWrite(pins.beep, LOW);
-        delay(250);
-        getMag();
-        if (abs(mag.x) > magTrigger || abs(mag.y) > magTrigger || abs(mag.z) > magTrigger)
-        {
-          magDetect = true;
-        }
-        ii++;
-      } // end inner loop
-      ii = 0;
+        delay(13);
+      }
+      delay(250);
+    }
+    while (!magDetect && ii < beepCode)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(250);
+      digitalWrite(pins.beep, LOW);
+      delay(250);
       getMag();
-      checkPyroContinuity();
       if (abs(mag.x) > magTrigger || abs(mag.y) > magTrigger || abs(mag.z) > magTrigger)
       {
         magDetect = true;
       }
-      while (!magDetect && ii < 10)
-      {
-        delay(100);
-        ii++;
-      }
-    } // end outer loop
-  } // end if magswitch
+      ii++;
+    } // end inner loop
+    ii = 0;
+    getMag();
+    checkPyroContinuity();
+    if (abs(mag.x) > magTrigger || abs(mag.y) > magTrigger || abs(mag.z) > magTrigger)
+    {
+      magDetect = true;
+    }
+    while (!magDetect && ii < 10)
+    {
+      delay(100);
+      ii++;
+    }
+  } // end outer loop
+}
 
+/**
+ * @brief Wait for the rocket to be held vertical, then sample the sensors for 3 seconds: the gyro
+ * biases, the resting values, the high-G bias against the accelerometer, and the initial
+ * rotation.
+ */
+static void calibrateOnPad()
+{
   if (settings.testMode)
   {
     Serial.println(F("Hold Rocket Vertical"));
@@ -1280,7 +1032,13 @@ void setup(void)
     Serial.print(F("Off Vertical: "));
     Serial.println(((float)offVert) * .1, 1);
   }
+}
 
+/**
+ * @brief Read the battery voltage, from a pyro continuity pin on old hardware.
+ */
+static void readBatteryVoltage()
+{
   // Read the battery voltage
   voltReading = analogRead(pins.batt);
   voltage = ((float)voltReading) * 3.3 * 3.2 * adcConvert;
@@ -1303,36 +1061,45 @@ void setup(void)
     voltReading = analogRead(pins.batt);
     voltage = (float)(voltReading) * 3.3 * 2.72 * adcConvert;
   }
+}
 
+/**
+ * @brief Beep out the main deployment altitude setting.
+ */
+static void reportMainDeployAlt()
+{
   // Read main deploy setting into its beep array
-  if (settings.reportStyle == 'P')
+  parseBeep((uint32_t)((float)(settings.mainDeployAlt) * unitConvert), maxVelDigits, 4);
+  if (settings.testMode)
   {
-    parseBeep((uint32_t)((float)(settings.mainDeployAlt) * unitConvert), maxVelDigits, 4);
-    if (settings.testMode)
-    {
-      Serial.print(F("Reporting Main Deploy Settings: "));
-      Serial.println((uint16_t)((float)(settings.mainDeployAlt) * unitConvert));
-    }
-    // Beep out the main deployment altitude setting
-    while (maxVelDigits[velDigits - 1] == 0)
-    {
-      velDigits--;
-    }
-    for (byte i = velDigits; i > 0; i--)
-    {
-      delay(800);
-      for (byte j = maxVelDigits[i - 1]; j > 0; j--)
-      {
-        digitalWrite(pins.beep, HIGH);
-        delay(100);
-        digitalWrite(pins.beep, LOW);
-        delay(100);
-      }
-    }
-    velDigits = 4;
-    delay(2000);
+    Serial.print(F("Reporting Main Deploy Settings: "));
+    Serial.println((uint16_t)((float)(settings.mainDeployAlt) * unitConvert));
   }
+  // Beep out the main deployment altitude setting
+  while (maxVelDigits[velDigits - 1] == 0)
+  {
+    velDigits--;
+  }
+  for (byte i = velDigits; i > 0; i--)
+  {
+    delay(800);
+    for (byte j = maxVelDigits[i - 1]; j > 0; j--)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(100);
+      digitalWrite(pins.beep, LOW);
+      delay(100);
+    }
+  }
+  velDigits = 4;
+  delay(2000);
+}
 
+/**
+ * @brief On a new part, write the initial values of the last flight's EEPROM record.
+ */
+static void checkFirstUse()
+{
   // check for initial MCU programming
   bool initPgm = false;
   for (byte i = 0; i < altDigits; i++)
@@ -1355,74 +1122,85 @@ void setup(void)
     }
     EEPROM.update(eeprom.totalFlights, 0);
     EEPROM.update(eeprom.lastEvent, 27);
-    lastEvent = 27;
   }
+}
 
+/**
+ * @brief Beep out the last flight's maximum altitude.
+ */
+static void reportLastFlight()
+{
   // Beep out the last flight's altitude
-  if (settings.reportStyle == 'P')
+  if (settings.testMode)
   {
+    Serial.print(F("Reporting last flight: "));
+  }
+  for (uint8_t i = 0; i < 6; i++)
+  {
+    maxAltDigits[i] = EEPROM.read(eeprom.maxFltAlt + i);
+  }
+  while (maxAltDigits[altDigits - 1] == 0 && altDigits > 0)
+  {
+    altDigits--;
+  }
+  for (uint8_t i = altDigits; i > 0; i--)
+  {
+    delay(800);
     if (settings.testMode)
     {
-      Serial.print(F("Reporting last flight: "));
-    }
-    for (uint8_t i = 0; i < 6; i++)
-    {
-      maxAltDigits[i] = EEPROM.read(eeprom.maxFltAlt + i);
-    }
-    while (maxAltDigits[altDigits - 1] == 0 && altDigits > 0)
-    {
-      altDigits--;
-    }
-    for (uint8_t i = altDigits; i > 0; i--)
-    {
-      delay(800);
-      if (settings.testMode)
+      if (maxAltDigits[i - 1] < 10)
       {
-        if (maxAltDigits[i - 1] < 10)
-        {
-          Serial.print(maxAltDigits[i - 1]);
-        }
-        else
-        {
-          Serial.print('0');
-        }
+        Serial.print(maxAltDigits[i - 1]);
       }
-      for (uint8_t j = maxAltDigits[i - 1]; j > 0; j--)
+      else
       {
-        digitalWrite(pins.beep, HIGH);
-        delay(100);
-        digitalWrite(pins.beep, LOW);
-        delay(100);
+        Serial.print('0');
       }
     }
-    altDigits = 6;
-    delay(2000);
+    for (uint8_t j = maxAltDigits[i - 1]; j > 0; j--)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(100);
+      digitalWrite(pins.beep, LOW);
+      delay(100);
+    }
   }
+  altDigits = 6;
+  delay(2000);
+}
 
+/**
+ * @brief Beep out the battery voltage.
+ */
+static void reportBatteryVoltage()
+{
   // Beep out the battery voltage
-  if (settings.reportStyle == 'P')
+  if (settings.testMode)
   {
-    if (settings.testMode)
-    {
-      Serial.println(" ");
-      Serial.print(F("Reporting Battery Voltage: "));
-      Serial.println(voltage, 1);
-    }
-    parseBeep((uint32_t)(voltage * 10), voltageDigits, 2);
-    for (uint8_t i = 0; i < 2; i++)
-    {
-      delay(800);
-      for (uint8_t j = voltageDigits[1 - i]; j > 0; j--)
-      {
-        digitalWrite(pins.beep, HIGH);
-        delay(100);
-        digitalWrite(pins.beep, LOW);
-        delay(100);
-      }
-    }
-    delay(2000);
+    Serial.println(" ");
+    Serial.print(F("Reporting Battery Voltage: "));
+    Serial.println(voltage, 1);
   }
+  parseBeep((uint32_t)(voltage * 10), voltageDigits, 2);
+  for (uint8_t i = 0; i < 2; i++)
+  {
+    delay(800);
+    for (uint8_t j = voltageDigits[1 - i]; j > 0; j--)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(100);
+      digitalWrite(pins.beep, LOW);
+      delay(100);
+    }
+  }
+  delay(2000);
+}
 
+/**
+ * @brief Set the serial debug outputs.
+ */
+static void setSerialDebug()
+{
   // set the Serial debug ouputs
   switch (settings.serialDebug)
   {
@@ -1443,6 +1221,417 @@ void setup(void)
     radioDebug = true;
     break;
   }
+}
+
+/**
+ * @brief Initializes the flight computer: hardware and user settings, sensors, radio, pyro
+ * channels, calibration, and the preflight reports.
+ */
+void setup(void)
+{
+
+  Serial.begin(38400);
+
+  delay(500);
+
+  // check to see if we are restarting from a powerloss
+  // if so, then we need to rapidly get the system back up and going
+  // call the rapidReset routine and immediately exit void setup
+  uint8_t lastEvent = EEPROM.read(eeprom.lastEvent);
+  if (lastEvent != 27)
+  {
+    EEPROM.update(eeprom.lastEvent, 27);
+    lastEvent = 27;
+  }
+  settings.inflightRecover = EEPROM.read(eeprom.inflightRecover);
+  if (settings.inflightRecover > 0 && (lastEvent < 24 && lastEvent != 6 && lastEvent != 7))
+  {
+
+    // execute the rapid recovery routine
+    Serial.print("Rapid Reset Initiated, setting: ");
+    Serial.println(settings.inflightRecover);
+    if (rapidReset())
+    {
+      // exit setup and immediately re-enter the loop
+      return;
+    }
+  }
+
+  // Start SD card
+  beginSD();
+
+  // if an EEPROM settings file exists on the SD card, read it and store it into EEPROM
+  parseEEPROMsettingsSD();
+
+  readHardwareSettingsEEPROM();
+
+  // check for unitialized EEPROM
+  if (sensors.accel == 255)
+  {
+    Serial.println("WARNING: SYSTEM HARDWARE SETTINGS ARE UNITIALIZED! SYSTEM CANNOT CONTINUE UNTIL HARDWARE DEVICES, BUSES, AND PIN VALUES ARE SET");
+    Serial.println("PLEASE LOAD EEPROMsettings.txt ONTO THE SD CARD ROOT TO PROCEED");
+    while (1)
+    {
+    }
+  }
+
+  setPinModes();
+
+  beginGnssSerial();
+
+  // check if the test mode button is being held
+  digitalWrite(pins.testGnd, LOW);
+  delay(50);
+  if (digitalRead(pins.testRead) == LOW)
+  {
+    settings.testMode = true;
+    Serial.println(F("------------------------------------------------------------"));
+    Serial.println(F("Bench-Test Mode Confirmed"));
+    Serial.println(F("Press the button again to calibrate the accelerometers."));
+    Serial.println(F("Enter 'b' into the serial monitor to calibrate the barometer"));
+    Serial.println(F("Enter 'c' into the serial monitor to adjust the canard trims"));
+    Serial.println(F("------------------------------------------------------------"));
+  }
+
+  setAnalogResolution();
+
+  // read the flight settings from the SD card
+  readFlightSettingsSD();
+
+  beginSensors();
+
+  // check to see if a critical senor failed the startup test - if so, give an audible warning
+  bool sensorsOK = sensors.statusAccel & sensors.statusGyro & sensors.statusHighG & sensors.statusBaro;
+  // halt progress and give an audible warning once per second
+  if (!sensorsOK)
+  {
+    Serial.println("Sensor Failure! Cannot proceed to flight");
+  }
+  while (!sensorsOK)
+  {
+    for (uint8_t i = 0; i < 20; i++)
+    {
+      digitalWrite(pins.beep, HIGH);
+      delay(12);
+      digitalWrite(pins.beep, LOW);
+      delay(13);
+    }
+    delay(1000);
+  }
+
+  scaleSensorGains();
+
+  beginRadioLink();
+
+  limitSettings();
+
+  writeSettingsEEPROM();
+
+  configurePyroChannels();
+
+  if (settings.testMode)
+  {
+    Serial.print(F("Flight Profile: "));
+    Serial.println(settings.fltProfile);
+    Serial.print(F("Pyro 4 Function: "));
+    Serial.println(pyro4.func);
+    Serial.print(F("Pyro 3 Function: "));
+    Serial.println(pyro3.func);
+    Serial.print(F("Pyro 2 Function: "));
+    Serial.println(pyro2.func);
+    Serial.print(F("Pyro 1 Function: "));
+    Serial.println(pyro1.func);
+  }
+
+  // check for silent mode
+  if (settings.testMode && settings.silentMode)
+  {
+    pins.beep = pins.nullCont;
+    Serial.println(F("Silent Mode Confirmed"));
+  }
+
+  configureRadio();
+
+  // setup servos if enabled
+  if (settings.stableRotn || settings.stableVert)
+  {
+
+    if (settings.testMode)
+    {
+      Serial.println(F("ACTIVE STABILIZATION ENABLED"));
+    }
+
+    // enable serial plotting
+    GPSecho = false;
+    radioDebug = false;
+
+    attachServos();
+    if (settings.testMode)
+    {
+      Serial.print(F("Servo1 Trim: "));
+      Serial.println(servo1trim);
+      Serial.print(F("Servo2 Trim: "));
+      Serial.println(servo2trim);
+      Serial.print(F("Servo3 Trim: "));
+      Serial.println(servo3trim);
+      Serial.print(F("Servo4 Trim: "));
+      Serial.println(servo4trim);
+    }
+
+    // Test canards
+    canardYaw1.write(120 - servo1trim);
+    canardYaw2.write(120 - servo2trim);
+    canardPitch3.write(120 - servo3trim);
+    canardPitch4.write(120 - servo4trim);
+    delay(1000);
+    canardYaw1.write(60 - servo1trim);
+    canardYaw2.write(60 - servo2trim);
+    canardPitch3.write(60 - servo3trim);
+    canardPitch4.write(60 - servo4trim);
+    delay(1000);
+    canardYaw1.write(90 - servo1trim);
+    canardYaw2.write(90 - servo2trim);
+    canardPitch3.write(90 - servo3trim);
+    canardPitch4.write(90 - servo4trim);
+  }
+
+  // otherwise disable the servos and ensure that stray voltages do not cause any attached servos to move
+  else
+  {
+    pinMode(pins.servo1, OUTPUT);
+    pinMode(pins.servo2, OUTPUT);
+    disableServos();
+  }
+
+  // signal if in test-mode
+  if (settings.testMode)
+  {
+
+    Serial.println(F("Signaling Test Mode"));
+    beep_counter = 0;
+    beep_delay = long_beep_delay;
+
+    // initiate the 7 beeps to signal test mode
+    while (beep_counter < 8)
+    {
+
+      fltTime.tmClock = micros();
+
+      // Look for the user to release the button
+      if (digitalRead(pins.testRead) == HIGH)
+      {
+        settings.testMode = false;
+        delay(50);
+      }
+
+      // Look for the user to put it into accelerometer calibration mode or barometer calibration mode
+      if (digitalRead(pins.testRead) == LOW && !settings.testMode)
+      {
+        delay(50); // necessary because sometimes when the button is released it bounces back
+        if (digitalRead(pins.testRead) == LOW)
+        {
+          settings.calibrationMode = true;
+          settings.testMode = true;
+          beep_counter = 8;
+          digitalWrite(pins.beep, LOW);
+          beep = false;
+        }
+      }
+
+      // Look for the user to enter barometer calibration mode by entering into the serial monitor
+      if (Serial.available() > 0)
+      {
+        userInput = Serial.read();
+        if (userInput == 'b')
+        {
+          baroCalibrate();
+        }
+        if (userInput == 'c')
+        {
+          setCanardTrim();
+        }
+        while (Serial.available() > 0)
+        {
+          userInput = Serial.read();
+        }
+      }
+
+      // starts the beep
+      if (!beep && fltTime.tmClock - timeLastBeepEnd > beep_delay)
+      {
+        digitalWrite(pins.beep, HIGH);
+        timeBeepStart = fltTime.tmClock;
+        beep = true;
+        beep_counter++;
+      }
+
+      // stops the beep
+      if (beep && (fltTime.tmClock - timeBeepStart > 500000UL))
+      {
+        digitalWrite(pins.beep, LOW);
+        timeBeepStart = 0UL;
+        timeLastBeepEnd = fltTime.tmClock;
+        beep = false;
+      }
+    } // end while
+
+    // Reset variables
+    beep_counter = 0;
+    timeBeepStart = 0UL;
+    timeLastBeepEnd = 0UL;
+    fltTime.tmClock = 0UL;
+    if (!settings.calibrationMode)
+    {
+      settings.testMode = true;
+    }
+  } // end testMode
+
+  // calibration mode
+  if (settings.calibrationMode)
+  {
+    accelCalibrate();
+  } // end calibration mode
+
+  // Calibrate the magnetometer
+  if (magCalibrateMode == 1)
+  {
+    magCalibrate();
+  }
+  // set the trigger for the magnetic switch
+  magTrigger = 3000;
+
+  readCalibrationEEPROM();
+
+  // output the read values
+  if (settings.testMode)
+  {
+    Serial.println(F("Calibrataion values read from EEPROM:"));
+    Serial.print(F("accel.biasX: "));
+    Serial.println(accel.biasX);
+    Serial.print(F("accel.biasY: "));
+    Serial.println(accel.biasY);
+    Serial.print(F("accel.biasZ: "));
+    Serial.println(accel.biasZ);
+    Serial.print(F("gyro.biasX: "));
+    Serial.println(gyro.biasX);
+    Serial.print(F("gyro.biasY: "));
+    Serial.println(gyro.biasY);
+    Serial.print(F("gyro.biasZ: "));
+    Serial.println(gyro.biasZ);
+    Serial.print(F("highG.biasX: "));
+    Serial.println(highG.biasX);
+    Serial.print(F("highG.biasY: "));
+    Serial.println(highG.biasY);
+    Serial.print(F("highG.biasZ: "));
+    Serial.println(highG.biasZ);
+    Serial.print(F("mag.biasX: "));
+    Serial.println(mag.biasX);
+    Serial.print(F("mag.biasY: "));
+    Serial.println(mag.biasY);
+    Serial.print(F("mag.biasZ: "));
+    Serial.println(mag.biasZ);
+    Serial.print(F("baro.tempOffset: "));
+    Serial.println(baro.tempOffset, 1);
+    Serial.print(F("baro.pressOffset: "));
+    Serial.println(baro.pressOffset, 2);
+  }
+
+  // read the orientation variables from EEPROM
+  readOrientation();
+
+  // display orientation values from EEPROM
+  if (settings.testMode)
+  {
+    Serial.print(F("accel.X is pointed to real world: "));
+    Serial.print((accel.dirX == 1) ? '+' : '-');
+    Serial.println(accel.orientX);
+    Serial.print(F("accel.Y is pointed to real world: "));
+    Serial.print((accel.dirY == 1) ? '+' : '-');
+    Serial.println(accel.orientY);
+    Serial.print(F("accel.Z is pointed to real world: "));
+    Serial.print((accel.dirZ == 1) ? '+' : '-');
+    Serial.println(accel.orientZ);
+    Serial.print(F("gyro.X is pointed to real world: "));
+    Serial.print((gyro.dirX == 1) ? '+' : '-');
+    Serial.println(gyro.orientX);
+    Serial.print(F("gyro.Y is pointed to real world: "));
+    Serial.print((gyro.dirY == 1) ? '+' : '-');
+    Serial.println(gyro.orientY);
+    Serial.print(F("gyro.Z is pointed to real world: "));
+    Serial.print((gyro.dirZ == 1) ? '+' : '-');
+    Serial.println(gyro.orientZ);
+    Serial.print(F("mag.X is pointed to real world: "));
+    Serial.print((mag.dirX == 1) ? '+' : '-');
+    Serial.println(mag.orientX);
+    Serial.print(F("mag.Y is pointed to real world: "));
+    Serial.print((mag.dirY == 1) ? '+' : '-');
+    Serial.println(mag.orientY);
+    Serial.print(F("mag.Z is pointed to real world: "));
+    Serial.print((mag.dirZ == 1) ? '+' : '-');
+    Serial.println(mag.orientZ);
+    Serial.print(F("highG.X is pointed to real world: "));
+    Serial.print((highG.dirX == 1) ? '+' : '-');
+    Serial.println(highG.orientX);
+    Serial.print(F("highG.Y is pointed to real world: "));
+    Serial.print((highG.dirY == 1) ? '+' : '-');
+    Serial.println(highG.orientY);
+    Serial.print(F("highG.Z is pointed to real world: "));
+    Serial.print((highG.dirZ == 1) ? '+' : '-');
+    Serial.println(highG.orientZ);
+  }
+
+  // Overrides for bench test mode
+  if (settings.testMode)
+  {
+    applyBenchTestOverrides();
+  }
+
+  // Create and open the next file on the SD card
+  createNextFileSD();
+
+  // check continuity
+  checkPyroContinuity();
+
+  // report continuity results
+  if (settings.testMode)
+  {
+    Serial.print("Pyro4 Continuity: ");
+    Serial.println((pyro4.contStatus) ? "Y" : "N");
+    Serial.print("Pyro3 Continuity: ");
+    Serial.println((pyro3.contStatus) ? "Y" : "N");
+    Serial.print("Pyro2 Continuity: ");
+    Serial.println((pyro2.contStatus) ? "Y" : "N");
+    Serial.print("Pyro1 Continuity: ");
+    Serial.println((pyro1.contStatus) ? "Y" : "N");
+    Serial.print(F("Reporting continuity code: "));
+    Serial.println(cont.beepCode);
+  }
+
+  // set the beep delay and preflight beep code
+  beep_delay = long_beep_delay;
+  beepCode = cont.beepCode;
+
+  // if the magnetic switch is enabled, beep the continuity code until the magnet is sensed
+  if (settings.magSwitchEnable)
+  {
+    waitForMagneticSwitch();
+  }
+
+  calibrateOnPad();
+  readBatteryVoltage();
+
+  // Read main deploy setting into its beep array
+  if (settings.reportStyle == 'P')
+  {
+    reportMainDeployAlt();
+  }
+  checkFirstUse();
+  if (settings.reportStyle == 'P')
+  {
+    reportLastFlight();
+    reportBatteryVoltage();
+  }
+  setSerialDebug();
 
   if (settings.testMode)
   {
