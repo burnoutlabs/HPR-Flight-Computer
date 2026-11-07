@@ -1,15 +1,15 @@
 /**
- * @file Device_Drivers.ino
+ * @file Device_Drivers.cpp
  * @brief Optimized drivers for the specific sensors supported by the flight computer.
  *
  * @details
  * This file contains the functions for starting and retrieving data from the supported sensors,
  * including accelerometers, gyroscopes, magnetometers, high-G accelerometers, and barometric sensors.
- * The flight code does not call these drivers directly: setPolyMorphs() (Device_Mgmt.ino) points the
+ * The flight code does not call these drivers directly: setPolyMorphs() (Device_Mgmt.cpp) points the
  * generic sensor function pointers declared in declarations.h (beginAccel(), getAccel(), beginGyro(),
  * getGyro(), beginMag(), getMag(), beginHighG(), getHighG(), beginBaro(), getBaro()) at the driver
  * for each configured sensor. Sensors without a driver here can be used through an external library
- * (Device_Drivers_External.ino).
+ * (Device_Drivers_External.cpp).
  *
  * @section changelog Change Log
  * - 26 Nov 17: Version 1 created to support Adafruit 10Dof board.
@@ -109,6 +109,12 @@
  * - ConvertTempMS56XX(): Converts temperature.
  * - ConvertPressMS56XX(): Converts pressure.
  */
+
+#include <Arduino.h>
+
+#include "Device_Drivers.h"
+#include "declarations.h"
+#include "Bus_Mgmt.h"
 
 //***************************************************************************
 // LSM303 Accelerometer, which has a different address from the magnetometer

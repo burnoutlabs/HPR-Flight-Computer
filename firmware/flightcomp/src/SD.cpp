@@ -1,5 +1,5 @@
 /**
- * @file SD.ino
+ * @file SD.cpp
  * @brief List of functions and routines for handling SD card operations.
  *
  * @details
@@ -39,11 +39,18 @@
  * - 27 NOV 22: Added an optional GPS output file containing NMEA strings.
  */
 
+#include <Arduino.h>
+#include <EEPROM.h>
+
+#include "SD_Card.h"
+#include "declarations.h"
+#include "flightcomp.h"
+
 // 28 FEB 26: adds rename capability for more unique filenames
 //---------------------------------
+// SD card files, declared in board.h with the library each board uses
 #if defined(__MK66FX1M0__) || defined(__MK64FX512__) || defined(ARDUINO_TEENSY41)
 // Teensy 3.5, 3.6, 4.0, 4.1
-#include <SdFat.h>
 
 // SDIO Setup
 SdFs SD;
@@ -53,18 +60,25 @@ FsFile gpsFile;
 
 #else
 // Teensy 3.2 or 4.0
-#include <SD.h>
 
 File outputFile;
 File settingsFile;
 File gpsFile;
 #endif
 
+// SD card line buffer and the write position in it, defined here with the writers so the
+// compiler can tell them apart while it fills the buffer
+int strPosn = 0;
+alignas(4) char dataString[1024];
+
 // GPS log variable
 char GPSlog[1024];
 
 // name of the open flight data file, for renameFileSD()
 char outputFileName[20] = "";
+
+// name of the last flight data file, for reOpenSD()
+char fileName[20] = "FLIGHT01.txt";
 
 /**
  * @brief Initializes the SD card.
@@ -560,7 +574,6 @@ void createNextFileSD()
   }
 } // end createNextFileSD
 
-char fileName[20] = "FLIGHT01.txt";
 /**
  * @brief Reopens the most recent file on the SD card.
  */
@@ -676,229 +689,6 @@ void readFlightSettingsSD()
   // close the settings file
   settingsFile.close();
 } // end readFlightSettingsSD
-
-/**
- * @brief Writes flight data to the SD card in ASCII text format.
- */
-void writeSDflightData()
-{
-  // Timestamp
-  writeULongData(fltTime.timeCurrent);
-  // Accel Data
-  writeIntData(accel.x);
-  writeIntData(accel.y);
-  writeIntData(accel.z);
-  // Gyro Data
-  writeIntData(gyro.x);
-  writeIntData(gyro.y);
-  writeIntData(gyro.z);
-  // HighG Accel Data
-  writeIntData(highG.x);
-  writeIntData(highG.y);
-  writeIntData(highG.z);
-  // debug output for write flags
-  if (settings.testMode)
-  {
-    writeIntData(cyclesBtwn);
-    writeBoolData(accel.newSamp);
-    writeBoolData(gyro.newSamp);
-    writeBoolData(highG.newSamp);
-    writeBoolData(mag.newSamp);
-    writeBoolData(baro.newSamp);
-    writeBoolData(baro.newTemp);
-    writeBoolData(SDradioTX);
-    writeBoolData(gnss.SDwrite);
-    writeBoolData(writeVolt);
-    dataString[strPosn] = cs;
-    strPosn++;
-    writeULongData(sampleTime);
-    writeULongData(writeTime);
-    cyclesBtwn = 0;
-  }
-  // reset write flags
-  accel.newSamp = gyro.newSamp = highG.newSamp = false;
-  // Smoothed high-G data
-  writeIntData((int16_t)highGsmooth);
-  // Integrated Rotation Values
-  writeLongData(rollZ);
-  writeIntData(yawY);
-  writeIntData(pitchX);
-  writeIntData(offVert);
-  // Integrated Speed and Altitude
-  writeFloatData(accelVel, 2);
-  writeFloatData(accelAlt, 2);
-  // Sensor Fusion Speed and Altitude
-  writeFloatData(fusionVel, 2);
-  writeFloatData(fusionAlt, 2);
-  // Flight Event Flags
-  writeBoolData(events.liftoff);
-  writeBoolData(events.boosterBurnout);
-  writeBoolData(events.boosterBurnoutCheck);
-  if (settings.fltProfile == '2')
-  {
-    writeBoolData(events.boosterSeparation);
-    writeBoolData(events.sustainerFireCheck);
-    writeBoolData(events.sustainerFire);
-    writeBoolData(events.sustainerIgnition);
-    writeBoolData(events.sustainerBurnout);
-  }
-  if (settings.fltProfile == 'A')
-  {
-    writeBoolData(events.airStart1Check);
-    writeBoolData(events.airStart1Fire);
-    writeBoolData(events.airStart1Ignition);
-    writeBoolData(events.airStart1Burnout);
-    writeBoolData(events.airStart2Check);
-    writeBoolData(events.airStart2Fire);
-    writeBoolData(events.airStart2Ignition);
-    writeBoolData(events.airStart2Burnout);
-  }
-  writeBoolData(events.apogee);
-  writeBoolData(events.apogeeFire);
-  writeBoolData(events.mainDeploy);
-  writeBoolData(events.touchdown);
-  writeBoolData(events.timeOut);
-  dataString[strPosn] = cs;
-  strPosn++;
-  writeIntData(radio.event);
-  // Continuity Data
-  dataString[strPosn] = 'C';
-  strPosn++;
-  writeBoolData(pyro1.contStatus);
-  writeBoolData(pyro2.contStatus);
-  writeBoolData(pyro3.contStatus);
-  writeBoolData(pyro4.contStatus);
-  dataString[strPosn] = cs;
-  strPosn++;
-  // Pyro Firing Data
-  dataString[strPosn] = 'F';
-  strPosn++;
-  writeBoolData(pyro1.fireStatus);
-  writeBoolData(pyro2.fireStatus);
-  writeBoolData(pyro3.fireStatus);
-  writeBoolData(pyro4.fireStatus);
-  dataString[strPosn] = cs;
-  strPosn++;
-  writeIntData(pins.firePin);
-  // Barometer
-  if (baro.newSamp)
-  {
-    writeFloatData2(baro.Alt, 2);
-    writeFloatData2(baro.smoothAlt, 2);
-    writeFloatData(baro.Vel, 2);
-    writeFloatData(baro.pressure, 2);
-    baro.newSamp = false;
-  }
-  else
-  {
-    for (byte i = 0; i < 4; i++)
-    {
-      dataString[strPosn] = cs;
-      strPosn++;
-    }
-  }
-  // Temperature
-  if (baro.newTemp)
-  {
-    writeFloatData(baro.temperature, 2);
-    baro.newTemp = false;
-  }
-  else
-  {
-    dataString[strPosn] = cs;
-    strPosn++;
-  }
-  // Battery Voltage
-  if (writeVolt)
-  {
-    writeFloatData(voltage, 2);
-    writeVolt = false;
-  }
-  else
-  {
-    dataString[strPosn] = cs;
-    strPosn++;
-  }
-  // Magnetometer Data
-  if (mag.newSamp)
-  {
-    writeIntData(mag.x);
-    writeIntData(mag.y);
-    writeIntData(mag.z);
-    mag.newSamp = false;
-  }
-  else
-  {
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-  }
-  // GPS Data
-  if (gnss.SDwrite)
-  {
-    writeFloatData(gnss.latitude, 6);
-    writeFloatData(gnss.longitude, 6);
-    writeFloatData((float)GPS.speed.mph(), 2);
-    writeFloatData2(gnss.alt, 2);
-    writeFloatData((float)GPS.course.deg(), 2);
-    writeIntData(radio.satNum);
-    gnss.SDwrite = false;
-  }
-  else
-  {
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-    dataString[strPosn] = cs;
-    strPosn++;
-  }
-  // update the radio packet number
-  if (SDradioTX)
-  {
-    writeIntData(radio.packetnum);
-    SDradioTX = false;
-  }
-  else
-  {
-    dataString[strPosn] = cs;
-    strPosn++;
-  }
-  // end of sample - carriage return, newline, and null value
-  dataString[strPosn] = '\r';
-  strPosn++;
-  dataString[strPosn] = '\n';
-  strPosn++;
-  dataString[strPosn] = '\0';
-  // write the string to file and capture the time it takes to write to the SD card
-  if (settings.testMode)
-  {
-    writeStart = micros();
-  }
-  outputFile.write(dataString, strPosn);
-  if (settings.testMode)
-  {
-    writeTime = micros() - writeStart;
-    if (writeTime > maxWriteTime)
-    {
-      maxWriteTime = writeTime;
-    }
-    if (writeTime > writeThreshold)
-    {
-      writeThreshCount++;
-    }
-  }
-  strPosn = 0;
-} // end writeSDflightData
 
 /**
  * @brief Writes the footer information to the SD card after flight, then closes
@@ -1089,41 +879,6 @@ void writeSDfooterClose()
 } // end SD footer and close
 
 /**
- * @brief Renames the closed flight data file to the GNSS liftoff date and time and the rocket name.
- *
- * @details The new name is YYYYMMDDHHMM (UTC) followed by a space and the rocket name, with a
- * .csv extension, for example "202611061530 MyRocket.csv". The rename is by path, so it is called
- * after writeSDfooterClose() has closed the file. Without a GNSS date at liftoff the file keeps
- * its FLIGHTnn.txt name, and if the rename fails (the name exists, or the rocket name holds a
- * character the card's file system rejects) the file is left as it was.
- */
-void renameFileSD()
-{
-  // month is 0 when no GNSS date was captured at liftoff
-  if (gnss.liftoff.month == 0)
-  {
-    return;
-  }
-  char *p = dataString;
-  itoa(gnss.liftoff.year, p, 10);
-  p += strlen(p);
-  const uint8_t field[4] = {gnss.liftoff.month, gnss.liftoff.day, gnss.liftoff.hour, gnss.liftoff.minute};
-  for (uint8_t i = 0; i < 4; i++)
-  {
-    *p++ = '0' + field[i] / 10;
-    *p++ = '0' + field[i] % 10;
-  }
-  *p++ = ' ';
-  // bounded copy: rocketName is not guaranteed to be null-terminated
-  for (uint8_t i = 0; i < sizeof(settings.rocketName) && settings.rocketName[i] != '\0'; i++)
-  {
-    *p++ = settings.rocketName[i];
-  }
-  strcpy(p, ".csv");
-  SD.rename(outputFileName, dataString);
-}
-
-/**
  * @brief Converts an integer to a char array and appends to the data string.
  *
  * @param dataValue Integer value to be converted.
@@ -1239,30 +994,6 @@ void writeFloatData(float dataValue, uint8_t decimals)
     strPosn++;
   }
 } // end writeFloatData
-
-/**
- * @brief Converts a boolean to a char array and appends to the data string.
- *
- * @param dataBool Boolean value to be converted.
- */
-void writeBoolData(bool dataBool)
-{
-  dataString[strPosn] = (dataBool) ? '1' : '0';
-  strPosn++;
-} // end writeBoolData
-
-/**
- * @brief Updates the position within the data string.
- */
-void updateStrPosn()
-{
-  while (dataString[strPosn] != '\0')
-  {
-    strPosn++;
-  }
-  dataString[strPosn] = cs;
-  strPosn++;
-} // end updateStrPosn
 
 /**
  * @brief Parses the next variable from the SD card.

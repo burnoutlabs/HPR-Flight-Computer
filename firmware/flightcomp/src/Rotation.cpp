@@ -1,5 +1,5 @@
 /**
- * @file Rotation.ino
+ * @file Rotation.cpp
  * @brief Functions and routines for rocket flight control and stabilization.
  *
  * @details
@@ -16,6 +16,13 @@
  * - 26 DEC 21: Initial coding for return system.
  * - 11 MAY 24: Updated for the Teensy 4.0/4.1 FPU at 64-bit precision.
  */
+
+#include <Arduino.h>
+
+#include "Rotation.h"
+#include "declarations.h"
+#include "flightcomp.h"
+#include "Speed_Trig.h"
 
 // getQuatRotn() state, at file scope rather than as function-local statics so that
 // the host tests can reset it between cases. Rotation (Quat) and roll-unwrapping

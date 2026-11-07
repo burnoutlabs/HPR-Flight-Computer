@@ -1,5 +1,5 @@
 /**
- * @file SX127X_Driver.ino
+ * @file SX127X_Driver.cpp
  * @brief Optimized drivers for the Semtech SX1276/7/8/9 LoRa packet radios over SPI.
  *
  * @details
@@ -7,6 +7,13 @@
  * configuration for the 70cm band), sends packets, switches operating modes, and clears the
  * interrupt flags after a transmission.
  */
+
+#include <Arduino.h>
+
+#include "SX127X_Driver.h"
+#include "declarations.h"
+#include "flightcomp.h"
+#include "Bus_Mgmt.h"
 
 // These are optimized drivers for the Semtech SX1276, SX1277, SX1278, and SX1279 packet radios
 //-----------------------------------------------

@@ -1,8 +1,13 @@
 /**
- * @file Speed_Trig.ino
+ * @file Speed_Trig.cpp
  *
  * @brief Functions and lookup tables for trigonometric operations in 0.1 degree increments.
  */
+
+#include <Arduino.h>
+
+#include "Speed_Trig.h"
+#include "declarations.h"
 
 /**
  * @section List of Functions & Routines

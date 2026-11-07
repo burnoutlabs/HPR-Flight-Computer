@@ -1,12 +1,21 @@
 /**
  * @file declarations.h
- * @brief Global declarations shared by all of the flight computer sketch files.
+ * @brief Types and extern declarations of the globals shared by the flight computer sources.
  *
  * @details
  * Holds the EEPROM address map, the settings, sensor, pin, and flight-state structs, the
  * radio register and packet variables, and the device function pointers that setPolyMorphs()
- * (Device_Mgmt.ino) assigns at startup.
+ * (Device_Mgmt.cpp) assigns at startup. The variables are defined, with their initial
+ * values, in globals.cpp.
  */
+#pragma once
+
+#include <Arduino.h>
+
+// alignas(4) on a byte-aligned array, struct or union: while every global was defined in the
+// one translation unit, GCC gave these word alignment (its -O2 data alignment on ARM) and
+// generated code that relies on it. Most files now see only the extern declaration, so the
+// alignment is stated here, and on the definition, to keep that code the same.
 
 // Header file for all major declared variables
 //-----------------------------------------------
@@ -16,7 +25,7 @@
 //-----------------------------------------
 // EEPROM Locations
 //-----------------------------------------
-struct
+struct EepromMap
 {
   int maxFltAlt = 0;  // 00-05: maximum altitude of last flight
   int accelBiasX = 6; // 06-11: accel.bias(X,Y,Z)
@@ -196,11 +205,13 @@ struct
   int gyroBiasX = 255;    // 2
   int gyroBiasY = 257;    // 2
   int gyroBiasZ = 259;    // 2
-} eeprom;
+};
+// Never written: const gives it internal linkage, so each address folds to a constant
+const EepromMap eeprom{};
 //-----------------------------------------
 // Sensor device data
 //-----------------------------------------
-struct
+struct SensorConfig
 {
   byte accel = 0;
   byte mag = 0;
@@ -232,11 +243,12 @@ struct
   bool statusMag = false;
   bool statusRadio = false;
   bool pyroPWM = false;
-} sensors;
+};
+alignas(4) extern SensorConfig sensors;
 //-----------------------------------------
 // User Settings
 //-----------------------------------------
-struct
+struct UserSettings
 {
   bool testMode = false;
   bool calibrationMode = false;
@@ -284,11 +296,12 @@ struct
   bool stableVert = false;
   //----------flyback option--------------------
   bool flyBack = false;
-} settings;
+};
+extern UserSettings settings;
 //-----------------------------------------
 // Sensor variables
 //-----------------------------------------
-byte rawData[14];
+// rawData, the bus read buffer, is declared in Bus_Mgmt.h
 typedef struct
 {
   byte addr;
@@ -327,10 +340,10 @@ typedef struct
   uint32_t timeBtwnSamp = 10000UL;
   boolean newSamp = false;
 } sensorData;
-sensorData accel;
-sensorData mag;
-sensorData gyro;
-sensorData highG;
+extern sensorData accel;
+extern sensorData mag;
+extern sensorData gyro;
+extern sensorData highG;
 //-----------------------------------------
 // pyro variables
 //-----------------------------------------
@@ -343,10 +356,10 @@ typedef struct
   uint8_t contPin;
   uint8_t firePin;
 } pyroMap;
-pyroMap pyro1;
-pyroMap pyro2;
-pyroMap pyro3;
-pyroMap pyro4;
+extern pyroMap pyro1;
+extern pyroMap pyro2;
+extern pyroMap pyro3;
+extern pyroMap pyro4;
 //-----------------------------------------
 // flight events
 //-----------------------------------------
@@ -381,8 +394,8 @@ struct eventList
   bool touchdown = false;
   bool timeOut = false;
 };
-struct eventList events;
-struct eventList resetEvents;
+alignas(4) extern struct eventList events;
+alignas(4) extern struct eventList resetEvents;
 //-----------------------------------------
 // Master timing variables
 //-----------------------------------------
@@ -417,12 +430,12 @@ struct timerList
   unsigned long timeCurrent = 0UL;
   unsigned long dt = 0UL;
 };
-struct timerList fltTime;
-struct timerList resetFltTime;
+extern struct timerList fltTime;
+extern struct timerList resetFltTime;
 //-----------------------------------------
 // GPIO pin mapping
 //-----------------------------------------
-struct
+struct PinMap
 {
   uint8_t nullCont;
   uint8_t nullFire;
@@ -458,35 +471,37 @@ struct
   uint8_t baroCS;
   uint8_t SD_CS;
   uint8_t firePin = 0;
-} pins;
+};
+alignas(4) extern PinMap pins;
 //-----------------------------------------
 // radio variables
 //-----------------------------------------
-uint8_t dataPacket[256];
-bool liftoffSync = false;
-unsigned long TXstartTime;
-bool implicitHdr = false;
-bool syncFreq = false;
-uint8_t pktPosn = 0;
-uint8_t pktSize = 0;
-uint16_t sampNum = 0;
-uint8_t packetSamples = 4;
-bool gpsTransmit = false;
-bool TX = false;
-bool SDradioTX = false;
-uint8_t radioMode;
-volatile boolean clearTX = false;
-volatile boolean buildPkt = false;
-volatile boolean syncFlag = false;
-bool sendPkt = false;
-struct
+alignas(4) extern uint8_t dataPacket[256];
+extern bool liftoffSync;
+extern unsigned long TXstartTime;
+extern bool implicitHdr;
+extern bool syncFreq;
+extern uint8_t pktPosn;
+extern uint8_t pktSize;
+extern uint16_t sampNum;
+extern uint8_t packetSamples;
+extern bool gpsTransmit;
+extern bool TX;
+extern bool SDradioTX;
+extern uint8_t radioMode;
+extern volatile boolean clearTX;
+extern volatile boolean buildPkt;
+extern volatile boolean syncFlag;
+extern bool sendPkt;
+struct PacketIntervals
 {
   uint32_t preLiftoff = 1000000UL;
   uint32_t inflight = 200000UL;
   uint32_t postFlight = 10000000UL;
   uint32_t samplesPerPkt = 4UL;
-} pktInterval;
-struct
+};
+extern PacketIntervals pktInterval;
+struct RadioTelemetry
 {
   int16_t packetnum = 0;
   uint8_t event = 0;
@@ -505,11 +520,12 @@ struct
   uint8_t satNum = 0;
   bool pktCallsign = false;
   uint32_t lastSampTime = 0UL;
-} radio;
+};
+extern RadioTelemetry radio;
 //-----------------------------------------
 // continuity Booleans
 //-----------------------------------------
-struct
+struct ContinuityStatus
 {
   bool apogee;
   bool main;
@@ -521,45 +537,47 @@ struct
   bool error;
   uint8_t reportCode;
   uint8_t beepCode;
-} cont;
+};
+alignas(4) extern ContinuityStatus cont;
 //-----------------------------------------
 // Non-Event Booleans
 //-----------------------------------------
-bool rotnOK = true;
-bool altOK = false;
-bool beep = false;
-bool pyroFire = false;
-bool fileClose = false;
-unsigned long boosterBurpTime = 100000UL;
-float unitConvert = 3.2808F;
+extern bool rotnOK;
+extern bool altOK;
+extern bool beep;
+extern bool pyroFire;
+extern bool fileClose;
+extern unsigned long boosterBurpTime;
+extern float unitConvert;
 //-----------------------------------------
 // digital accelerometer variables
 //-----------------------------------------
-int g = 1366;
-float accelNow;
-float maxG = 0.0;
-int gTrigger = 3415; // 2.5G trigger
+extern int g;
+extern float accelNow;
+extern float maxG;
+extern int gTrigger; // 2.5G trigger
 //-----------------------------------------
 // High-G accelerometer variables
 //-----------------------------------------
-int high1G = 63;
-bool filterFull = false;
-long highGsum = 0L;
-int highGfilter[30] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t sizeHighGfilter = 30;
-uint8_t filterPosn = 0;
-float highGsmooth;
-float adcConvert = 0.000015259;
-uint16_t ADCmidValue = 32768;
-union
+extern int high1G;
+extern bool filterFull;
+extern long highGsum;
+extern int highGfilter[30];
+extern uint8_t sizeHighGfilter;
+extern uint8_t filterPosn;
+extern float highGsmooth;
+extern float adcConvert;
+extern uint16_t ADCmidValue;
+union CalUnion
 {
   int16_t calValue;
   uint8_t calByte[2];
-} calUnion;
+};
+alignas(4) extern CalUnion calUnion;
 //-----------------------------------------
 // Altitude & Baro Sensor variables
 //-----------------------------------------
-struct
+struct BaroData
 {
   float rawAlt = 0.0F;
   float Alt = 0.0F;
@@ -577,70 +595,71 @@ struct
   float seaLevelPressure = 1013.25;
   float tempOffset;
   float pressOffset;
-} baro;
+};
+extern BaroData baro;
 //-----------------------------------------
 // Baro Reporting Variables
 //-----------------------------------------
-uint8_t baroTouchdown = 0;
-uint8_t touchdownTrigger = 5;
-float pressureAvg = 0;
-float pressureAvg5[5] = {0.0, 0.0, 0.0, 0.0, 0.0};
-float pressureSum = 0.0;
-uint8_t pressurePosn = 0;
+extern uint8_t baroTouchdown;
+extern uint8_t touchdownTrigger;
+extern float pressureAvg;
+extern float pressureAvg5[5];
+extern float pressureSum;
+extern uint8_t pressurePosn;
 //-----------------------------------------
 // Magnetometer Variables
 //-----------------------------------------
-int16_t magTrigger = 0;
-uint8_t magCalibrateMode = 0;
-long magRoll = 0UL;
-int magOffVert = 0;
-int magPitch = 0;
-int magYaw = 0;
+extern int16_t magTrigger;
+extern uint8_t magCalibrateMode;
+extern long magRoll;
+extern int magOffVert;
+extern int magPitch;
+extern int magYaw;
 //-----------------------------------------
 // gyro & rotation variables
 //-----------------------------------------
-long dx = 0L;
-long dy = 0L;
-long dz = 0L;
-float yawY0;
-float pitchX0;
-int pitchX;
-int yawY;
-long rollZ = 0;
+extern long dx;
+extern long dy;
+extern long dz;
+extern float yawY0;
+extern float pitchX0;
+extern int pitchX;
+extern int yawY;
+extern long rollZ;
 const float mlnth = 0.000001;
-int offVert = 0;
-bool rotationFault = false;
+extern int offVert;
+extern bool rotationFault;
 //-----------------------------------------
 // Rotation timing variables
 //-----------------------------------------
-unsigned long lastRotn = 0UL;     // time of the last call to update the rotation
-unsigned long rotnRate = 10000UL; // 100 updates per second
+extern unsigned long lastRotn; // time of the last call to update the rotation
+extern unsigned long rotnRate; // 100 updates per second
 //-----------------------------------------
 // velocity calculation variables
 //-----------------------------------------
-float accelVel = 0.0F;
-float accelAlt = 0.0F;
-float maxVelocity = 0.0F;
-float fusionVel = 0.0F;
-float fusionAlt = 0.0F;
-float thresholdVel = 35.0F;
-float thresholdAlt = 61.0F;
-uint32_t clearRailTime = 250000UL;
+extern float accelVel;
+extern float accelAlt;
+extern float maxVelocity;
+extern float fusionVel;
+extern float fusionAlt;
+extern float thresholdVel;
+extern float thresholdAlt;
+extern uint32_t clearRailTime;
 //-----------------------------------------
 // beeper variables
 //-----------------------------------------
-uint8_t beep_counter = 0;
-uint8_t beepPosn = 0;
-uint32_t beep_delay = 100000UL;
-uint8_t beepCode = 0;
-uint32_t beep_len = 100000UL;
-uint32_t timeBeepStart = 0UL;
-uint32_t timeLastBeepEnd = 0UL;
-bool beepAlt = false;
-bool beepVel = false;
-bool beepCont = true;
-bool beepAlarm = false;
-bool livePyroAlarm = false;
+extern uint8_t beep_counter;
+extern uint8_t beepPosn;
+extern uint32_t beep_delay;
+extern uint8_t beepCode;
+extern uint32_t beep_len;
+extern uint32_t timeBeepStart;
+extern uint32_t timeLastBeepEnd;
+extern bool beepAlt;
+extern bool beepVel;
+extern bool beepCont;
+extern bool beepAlarm;
+extern bool livePyroAlarm;
 const uint32_t short_beep_delay = 100000UL;
 const uint32_t long_beep_delay = 800000UL;
 const uint32_t alarmBeepDelay = 10000UL;
@@ -650,30 +669,29 @@ const uint32_t shortBeepLen = 10000UL;
 //-----------------------------------------
 // SD card writing variables
 //-----------------------------------------
-uint32_t writeStart;
-uint32_t writeTime;
-uint32_t maxWriteTime;
-uint32_t writeThreshold = 10000UL;
-uint32_t writeThreshCount = 0UL;
-int strPosn = 0;
-bool syncApogee = false;
-bool syncMains = false;
+extern uint32_t writeStart;
+extern uint32_t writeTime;
+extern uint32_t maxWriteTime;
+extern uint32_t writeThreshold;
+extern uint32_t writeThreshCount;
+extern bool syncApogee;
+extern bool syncMains;
 const byte decPts = 2;
 const byte base = 10;
-char dataString[1024];
-uint8_t maxAltDigits[6] = {0, 0, 0, 0, 0, 0};
-uint8_t maxVelDigits[4] = {0, 0, 0, 0};
-uint8_t voltageDigits[2] = {0, 0};
-uint8_t altDigits = 6;
-uint8_t velDigits = 4;
-uint8_t n = 1;
-float voltage = 0.0F;
-bool writeVolt = false;
-unsigned long voltRate = 33333UL;
-uint16_t voltReading;
-unsigned long lastVolt = 0UL;
-bool reportCode = true; // true = report max altitude, false = report max velocity
-uint8_t postFlightCode = 0;
+// strPosn and dataString, the SD card line buffer, are declared in SD_Card.h
+alignas(4) extern uint8_t maxAltDigits[6];
+alignas(4) extern uint8_t maxVelDigits[4];
+alignas(4) extern uint8_t voltageDigits[2];
+extern uint8_t altDigits;
+extern uint8_t velDigits;
+extern uint8_t n;
+extern float voltage;
+extern bool writeVolt;
+extern unsigned long voltRate;
+extern uint16_t voltReading;
+extern unsigned long lastVolt;
+extern bool reportCode; // true = report max altitude, false = report max velocity
+extern uint8_t postFlightCode;
 const char cs = ',';
 //-----------------------------------------
 // GNSS Variables
@@ -691,7 +709,7 @@ struct eventData
   uint8_t second;
   uint8_t mili;
 };
-struct
+struct GnssData
 {
   float alt = 0.0;
   float maxAlt = 0.0;
@@ -720,48 +738,60 @@ struct
   uint8_t serialPosn = 0;
   char serialBuffer[60] = "";
   bool msgRX = false;
-} gnss;
+};
+extern GnssData gnss;
 //-----------------------------------------
 // EEPROM useful unions
 //-----------------------------------------
-union
+union UlongUnion
 {
   unsigned long val;
   byte Byte[4];
-} ulongUnion;
-union
+};
+extern UlongUnion ulongUnion;
+union IntUnion
 {
   int val;
   byte Byte[2];
-} intUnion;
-union
+};
+extern IntUnion intUnion;
+union FloatUnion
 {
   float val;
   byte Byte[4];
-} floatUnion;
+};
+extern FloatUnion floatUnion;
 //-----------------------------------------
 // Active Stabilization
 //-----------------------------------------
-char userInput;
-int8_t servo1trim = 0;
-int8_t servo2trim = 0;
-int8_t servo3trim = 0;
-int8_t servo4trim = 0;
-int8_t servo5trim = 0;
-int8_t servo6trim = 0;
-int8_t servo7trim = 0;
-int8_t servo8trim = 0;
+extern char userInput;
+extern int8_t servo1trim;
+extern int8_t servo2trim;
+extern int8_t servo3trim;
+extern int8_t servo4trim;
+extern int8_t servo5trim;
+extern int8_t servo6trim;
+extern int8_t servo7trim;
+extern int8_t servo8trim;
 const uint32_t controlInterval = 50000UL;
-uint32_t timeLastControl = 0UL;
-float Kp = 0.0F;
-float Ki = 0.0F;
-float Kd = 0.0F;
+extern uint32_t timeLastControl;
+extern float Kp;
+extern float Ki;
+extern float Kd;
 //-----------------------------------------
 // debug
 //-----------------------------------------
-boolean GPSecho = false;
-boolean radioDebug = false;
-boolean TXdataFile = true;
+extern boolean GPSecho;
+extern boolean radioDebug;
+extern boolean TXdataFile;
+//-----------------------------------------
+// loop debug and analysis variables
+//-----------------------------------------
+extern int cyclesBtwn;
+extern uint32_t sampleTime;
+extern uint32_t sampleStart;
+extern uint32_t sampleTimeCheck;
+extern uint32_t debugTimer;
 //--------------------------------------------
 // Radio event codes to eliminate magic numbers
 //--------------------------------------------
@@ -815,7 +845,7 @@ enum radioCodes
   LowFrqMode = 0x08, // LowFrq mode enables registers below 860MHz
   writeMask = 0x80
 };
-uint8_t radioFnctn = SleepMode;
+extern uint8_t radioFnctn;
 //--------------------------------------------
 // Function Pointers
 //--------------------------------------------
@@ -823,57 +853,57 @@ uint8_t radioFnctn = SleepMode;
  * @brief Initializes the configured accelerometer; returns false if it does not respond.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-bool (*beginAccel)();
+extern bool (*beginAccel)();
 /*!
  * @brief Initializes the configured gyroscope; returns false if it does not respond.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-bool (*beginGyro)();
+extern bool (*beginGyro)();
 /*!
  * @brief Initializes the configured magnetometer; returns false if it does not respond.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-bool (*beginMag)();
+extern bool (*beginMag)();
 /*!
  * @brief Initializes the configured high-G accelerometer; returns false if it does not respond.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-bool (*beginHighG)();
+extern bool (*beginHighG)();
 /*!
  * @brief Initializes the configured barometer; returns false if it does not respond.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-bool (*beginBaro)();
-bool (*beginRadio)();
+extern bool (*beginBaro)();
+extern bool (*beginRadio)();
 /*!
  * @brief Reads raw data from the configured accelerometer.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-void (*getAccel)();
+extern void (*getAccel)();
 /*!
  * @brief Reads raw data from the configured gyroscope.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-void (*getGyro)();
+extern void (*getGyro)();
 /*!
  * @brief Reads raw data from the configured magnetometer.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-void (*getMag)();
+extern void (*getMag)();
 /*!
  * @brief Reads raw data from the configured high-G accelerometer.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-void (*getHighG)();
+extern void (*getHighG)();
 /*!
  * @brief Reads raw data from the configured barometer.
  * Set by setPolyMorphs() to the driver for the configured sensor type.
  */
-void (*getBaro)();
-bool (*setRadioFreq)(float freq);
-bool (*setRadioPWR)(int8_t pwr);
-void (*radioSleep)();
-bool (*radioSendPkt)(uint8_t *data, uint8_t len);
-void (*GNSSrestorDefaults)();
-void (*GNSSconfig)();
-void (*GNSSpowerSave)();
+extern void (*getBaro)();
+extern bool (*setRadioFreq)(float freq);
+extern bool (*setRadioPWR)(int8_t pwr);
+extern void (*radioSleep)();
+extern bool (*radioSendPkt)(uint8_t *data, uint8_t len);
+extern void (*GNSSrestorDefaults)();
+extern void (*GNSSconfig)();
+extern void (*GNSSpowerSave)();

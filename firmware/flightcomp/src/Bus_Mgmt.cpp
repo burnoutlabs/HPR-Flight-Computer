@@ -1,9 +1,33 @@
 /**
- * @file Bus_Mgmt.ino
+ * @file Bus_Mgmt.cpp
  * @brief Supported buses and change log for Teensy boards
  *
  * @details This file outlines supported buses for various Teensy models and documents significant changes.
  */
+
+#include <Arduino.h>
+
+#include "Bus_Mgmt.h"
+#include "declarations.h"
+
+// Bus read buffer, defined here with burstRead() so the compiler can tell it apart from
+// the bus records while it fills it
+alignas(4) byte rawData[14];
+
+// Hardware Serial for GPS
+HardwareSerial *HWSERIAL;
+
+//-----------------------------------------
+// Bus Variables
+//-----------------------------------------
+_bus accelBus;
+_bus gyroBus;
+_bus magBus;
+_bus highGBus;
+_bus baroBus;
+_bus radioBus;
+_bus sdBus;
+_bus *activeBus;
 
 // Supported Buses for Teensy Models
 // ----------------------------------------------------------
@@ -26,7 +50,7 @@
 // SER8    N     N    N     N    Y
 
 /**
- * @brief Change Log for Bus_Mgmt.ino
+ * @brief Change Log for Bus_Mgmt.cpp
  */
 // ----------------------------------------------------------
 /**

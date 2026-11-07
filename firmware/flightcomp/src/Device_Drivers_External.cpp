@@ -1,16 +1,21 @@
 /**
- * @file Device_Drivers_External.ino
+ * @file Device_Drivers_External.cpp
  * @brief Template functions for driving devices through external libraries.
  *
  * @details
- * Each device type that has no optimized driver in Device_Drivers.ino, SX127X_Driver.ino,
- * RFDx_Driver.ino, or UBLOX_GNSS_Config.ino can be run from an external library through the
+ * Each device type that has no optimized driver in Device_Drivers.cpp, SX127X_Driver.cpp,
+ * RFDx_Driver.cpp, or UBLOX_GNSS_Config.cpp can be run from an external library through the
  * stub functions in this file: accelerometer, gyroscope, magnetometer, high-G accelerometer,
  * barometer, GNSS receiver, and packet radio. Select "External Library" for the device in
  * EEPROMsettings.txt, then fill in the matching begin/get (or radio/GNSS) function with the
- * library's calls. setPolyMorphs() (Device_Mgmt.ino) points the generic function pointers at
+ * library's calls. setPolyMorphs() (Device_Mgmt.cpp) points the generic function pointers at
  * these functions.
  */
+
+#include <Arduino.h>
+
+#include "Device_Drivers_External.h"
+#include "declarations.h"
 
 //-----------------------------------------------
 // Written by SparkyVT, TRA #12111, NAR #85720, L3
@@ -18,7 +23,7 @@
 // 22 OCT 23: Initial Build
 // 19 NOV 23: Added more devices
 //----------------------------------
-// This file is for the use of external libraries to drive devices & sensors not supported in Device_Drivers.ino, SX127X_Driver.ino, or UBLOX_GNSS_Config.ino
+// This file is for the use of external libraries to drive devices & sensors not supported in Device_Drivers.cpp, SX127X_Driver.cpp, or UBLOX_GNSS_Config.cpp
 // This system can support exeternal libraries for 5 types of devices:
 // accelerometer, gyroscope, high-G accelerometer, barometric pressure/temperature, GNSS reciever, and packet radio
 // To use external libraries follow the process below:

@@ -1,4 +1,4 @@
-# Code style for the C/C++ (Arduino .ino/.h) sources, written for clang-format 19.
+# Code style for the C/C++ (.cpp/.h, and Arduino .ino) sources, written for clang-format 19.
 # Apply with: clang-format -i --assume-filename=x.cpp <file>
 # (.ino is not a C++ extension clang-format recognises on its own.)
 ---

@@ -19,11 +19,11 @@ check: build test
 
 [doc("Format the firmware sources in place with clang-format")]
 fmt:
-    for f in firmware/*/src/*.ino firmware/*/src/*.h; do clang-format -i --assume-filename=x.cpp "$f"; done
+    for f in firmware/*/src/*.ino firmware/*/src/*.cpp firmware/*/src/*.h firmware/*/include/*.h; do clang-format -i --assume-filename=x.cpp "$f"; done
 
 [doc("Report firmware sources that clang-format would change, without changing them")]
 fmt-check:
-    rc=0; for f in firmware/*/src/*.ino firmware/*/src/*.h; do clang-format --dry-run --Werror --assume-filename=x.cpp "$f" || rc=1; done; exit $rc
+    rc=0; for f in firmware/*/src/*.ino firmware/*/src/*.cpp firmware/*/src/*.h firmware/*/include/*.h; do clang-format --dry-run --Werror --assume-filename=x.cpp "$f" || rc=1; done; exit $rc
 
 [doc("Run the flight computer's host unit tests (PlatformIO native env)")]
 test:

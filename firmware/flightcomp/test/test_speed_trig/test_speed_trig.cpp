@@ -1,6 +1,6 @@
 /**
  * @file test_speed_trig.cpp
- * @brief Speed_Trig.ino lookup functions against libm.
+ * @brief Speed_Trig.cpp lookup functions against libm.
  *
  * Angles in and out of the speed* functions are in tenths of a degree. Each test
  * sweeps the function's domain, measures the worst error against libm (in double

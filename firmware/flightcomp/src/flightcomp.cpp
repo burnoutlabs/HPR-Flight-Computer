@@ -1,5 +1,5 @@
 /**
- * @file flightcomp.ino
+ * @file flightcomp.cpp
  * @brief High-Power Rocketry Flight Computer for Teensy 3.2, 3.5, 3.6, 4.0, and 4.1
  *
  * Original sketch by Bryan Sparkman, TRA #12111, NAR #85720, L3
@@ -108,20 +108,17 @@
 #include <SPI.h>
 #include <string.h>
 #include "declarations.h"
-
-// Teensy 3.X
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__MK20DX256__)
-// i2c_t3 is needed to enable the different pin options of bus0
-#include <i2c_t3.h>
-// NOTE: typedef declarations must be in the main file and not the .h file or tabs
-typedef i2c_t3 TwoWire;
-// Teensy 4.X
-#else
-#include <Wire.h>
-#endif
-
-// Hardware Serial for GPS
-HardwareSerial *HWSERIAL;
+#include "board.h"
+#include "flightcomp.h"
+#include "Bus_Mgmt.h"
+#include "Calibration.h"
+#include "Device_Mgmt.h"
+#include "Event_Logic.h"
+#include "Infilght_Recover.h"
+#include "Rotation.h"
+#include "SD_Card.h"
+#include "SX127X_Driver.h"
+#include "Telemetry.h"
 
 // GPS Setup
 TinyGPSPlus GPS;
@@ -151,59 +148,8 @@ IntervalTimer radioTimer;
 IntervalTimer syncTimer;
 #endif
 
-// GLOBAL VARIABLES
-//-----------------------------------------
-// Set code version
-//-----------------------------------------
-const float codeVersion = 4.72;
-
-//-----------------------------------------
-// Bus Variables
-//-----------------------------------------
-// This struct contains all necessary bus info for each device
-typedef struct
-{
-  char type;
-  TwoWire *wire = &Wire;
-  uint32_t i2cRate = 400000;
-  uint8_t i2cAddress;
-  SPIClass *spi = &SPI;
-  SPISettings spiSet = SPISettings(10000000, MSBFIRST, SPI_MODE0);
-  uint8_t cs;
-  uint8_t writeMask = 0x00;
-  uint8_t readMask = 0x00;
-  uint8_t incMask = 0x00;
-} _bus;
-_bus accelBus;
-_bus gyroBus;
-_bus magBus;
-_bus highGBus;
-_bus baroBus;
-_bus radioBus;
-_bus sdBus;
-_bus *activeBus;
-
-// any routines called in the main flight loop need to be as fast as possible, so set them as "always inline" for the compiler
-inline void checkEvents(void) __attribute__((always_inline));
-inline void getDCM2DRotn(void) __attribute__((always_inline));
-inline void getQuatRotn(void) __attribute__((always_inline));
-// Rotation.ino defines getQuatRotn() with double arguments on Teensy 4.x and float
-// arguments elsewhere. Declaring the matching one here keeps PlatformIO's .ino
-// prototype generator, which does not evaluate #if, from declaring both.
-#if defined(__IMXRT1062__)
-void getQuatRotn(double dx, double dy, double dz, double gyroGain);
-#else
-void getQuatRotn(float dx, float dy, float dz, float gyroGain);
-#endif
-inline void radioSendPacket(void) __attribute__((always_inline));
-inline void writeSDflightData(void) __attribute__((always_inline));
-inline void writeFloatData(void) __attribute__((always_inline));
-inline void writeIntData(void) __attribute__((always_inline));
-inline void writeBoolData(void) __attribute__((always_inline));
-inline void writeLongData(void) __attribute__((always_inline));
-inline void writeULongData(void) __attribute__((always_inline));
-inline void updateStrPosn(void) __attribute__((always_inline));
-inline void burstRead(void) __attribute__((always_inline));
+// any routines called in the main flight loop need to be as fast as possible, so checkEvents()
+// (Event_Logic.h) and writeSDflightData() (SD_Card.h) are defined "always inline" in their headers
 
 
 /*!
@@ -1645,12 +1591,43 @@ void setup(void)
   Serial.println("End Setup");
 } // end setup
 
-// loop debug and analysis variables
-int cyclesBtwn = 0;
-uint32_t sampleTime = 0UL;
-uint32_t sampleStart = 0UL;
-uint32_t sampleTimeCheck = 0UL;
-uint32_t debugTimer = 0UL;
+/**
+ * @brief Renames the closed flight data file to the GNSS liftoff date and time and the rocket name.
+ *
+ * @details Defined here rather than in SD.cpp so that loop() can inline its early return, as it
+ * did when the flight computer was one sketch.
+ *
+ * The new name is YYYYMMDDHHMM (UTC) followed by a space and the rocket name, with a
+ * .csv extension, for example "202611061530 MyRocket.csv". The rename is by path, so it is called
+ * after writeSDfooterClose() has closed the file. Without a GNSS date at liftoff the file keeps
+ * its FLIGHTnn.txt name, and if the rename fails (the name exists, or the rocket name holds a
+ * character the card's file system rejects) the file is left as it was.
+ */
+void renameFileSD()
+{
+  // month is 0 when no GNSS date was captured at liftoff
+  if (gnss.liftoff.month == 0)
+  {
+    return;
+  }
+  char *p = dataString;
+  itoa(gnss.liftoff.year, p, 10);
+  p += strlen(p);
+  const uint8_t field[4] = {gnss.liftoff.month, gnss.liftoff.day, gnss.liftoff.hour, gnss.liftoff.minute};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    *p++ = '0' + field[i] / 10;
+    *p++ = '0' + field[i] % 10;
+  }
+  *p++ = ' ';
+  // bounded copy: rocketName is not guaranteed to be null-terminated
+  for (uint8_t i = 0; i < sizeof(settings.rocketName) && settings.rocketName[i] != '\0'; i++)
+  {
+    *p++ = settings.rocketName[i];
+  }
+  strcpy(p, ".csv");
+  SD.rename(outputFileName, dataString);
+}
 
 /*!
  * @brief Main flight loop for the flight computer.
@@ -1910,14 +1887,14 @@ void loop(void)
     dy += gyro.y * fltTime.dt;
     dz += gyro.z * fltTime.dt;
 
-    // if active stablization is on, then use the more stable rotation algorithm (Rotation.ino)
+    // if active stablization is on, then use the more stable rotation algorithm (Rotation.cpp)
     if (settings.stableRotn || settings.stableVert)
     {
       getDCM2DRotn(dx, dy, dz, gyro.gainZ);
       dx = dy = dz = 0L;
     }
 
-    // else update the quaternion rotation if we are not using active stabilization(Rotation.ino)
+    // else update the quaternion rotation if we are not using active stabilization(Rotation.cpp)
     else if (fltTime.timeCurrent - lastRotn > rotnRate)
     {
       getQuatRotn(dx, dy, dz, gyro.gainZ);
@@ -1925,10 +1902,10 @@ void loop(void)
       lastRotn = fltTime.timeCurrent;
     }
 
-    // run event logic (Event_Logic.ino)
+    // run event logic (Event_Logic.h)
     checkEvents();
 
-    // update the canards throws if stabilization or flyback is enabled (Rotation.ino)
+    // update the canards throws if stabilization or flyback is enabled (Rotation.cpp)
     if (settings.stableRotn || settings.stableVert || settings.flyBack)
     {
       uint32_t controlTime = micros();

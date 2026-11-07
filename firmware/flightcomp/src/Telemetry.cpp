@@ -1,8 +1,14 @@
 /**
- * @file Telemetry.ino
+ * @file Telemetry.cpp
  *
  * @brief Telemetry packet building, transmission, and 915MHz FHSS frequency hopping.
  */
+
+#include <Arduino.h>
+
+#include "Telemetry.h"
+#include "declarations.h"
+#include "flightcomp.h"
 
 /**
  * @section List of Functions & Routines
@@ -17,9 +23,9 @@
 /**
  * @section Radio Drivers
  *
- * The radio drivers are in SX127X_Driver.ino, RFDx_Driver.ino, and Device_Drivers_External.ino.
+ * The radio drivers are in SX127X_Driver.cpp, RFDx_Driver.cpp, and Device_Drivers_External.cpp.
  * Telemetry calls them through the function pointers declared in declarations.h, which
- * setPolyMorphs() (Device_Mgmt.ino) points at the driver for the configured radio:
+ * setPolyMorphs() (Device_Mgmt.cpp) points at the driver for the configured radio:
  * - beginRadio(): Starts the radio and checks that it responds.
  * - setRadioPWR(int8_t pwr): Sets output power (dBm).
  * - setRadioFreq(float freq): Sets the radio frequency (expressed in MHz, e.g., 434.250).
