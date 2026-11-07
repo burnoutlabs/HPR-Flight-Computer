@@ -86,9 +86,12 @@ pip install platformio==6.1.19
 pio run -d firmware/flightcomp              # every flight computer env
 pio run -d firmware/flightcomp -e teensy41  # one board
 pio run -d firmware/flightcomp -e teensy41 -t upload
+pio test -d firmware/flightcomp -e native   # host unit tests
 ```
 
-With [just](https://just.systems) installed, `just build` builds every env of both projects and `just check` runs the same build as CI. `just --list` shows the other recipes.
+With [just](https://just.systems) installed, `just build` builds every env of both projects, `just test` runs the host unit tests, and `just check` runs the same build and tests as CI. `just --list` shows the other recipes.
+
+The flight computer's unit tests (`firmware/flightcomp/test`, [Unity](https://www.throwtheswitch.org/unity)) build with the host's own C++ compiler in the `native` env, which `pio run` leaves out. They compile the real `.ino` sources under test against small stand-ins for the Teensy core and libraries in `test/shim`. The rotation tests run twice: once on the Teensy 4.x double-precision path, and once on the Teensy 3.x single-precision path, built with `-fsingle-precision-constant` as those boards are.
 
 Versions are pinned in each `platformio.ini`: the `teensy` platform 6.0.0, which bundles Teensyduino 1.62 (`framework-arduinoteensy` 1.162.0), TinyGPSPlus 1.0.3 and, for the ground station, SparkFun SerLCD 1.0.9. SdFat, SD, SPI, Wire, i2c_t3, PWMServo and EEPROM come with Teensyduino. The Teensy 3.2 env runs at 96 MHz, Teensyduino's default for that board.
 
