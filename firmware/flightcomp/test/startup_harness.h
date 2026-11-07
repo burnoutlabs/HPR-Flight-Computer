@@ -257,8 +257,18 @@ struct SensorFeed
 };
 inline SensorFeed sensorFeed;
 
+// A test that models what the sensors see (the in-flight recovery test) sets these; each then
+// replaces the deterministic values below for its sensor
+inline void (*accelFeedHook)() = nullptr;
+inline void (*baroFeedHook)() = nullptr;
+
 inline void feedAccelAndGyro()
 {
+  if (accelFeedHook != nullptr)
+  {
+    accelFeedHook();
+    return;
+  }
   const int32_t n = (int32_t)sensorFeed.accel++;
   accel.rawX = (int16_t)(40 + n % 7);
   accel.rawY = (int16_t)(-25 + n % 5);
@@ -297,6 +307,11 @@ inline void feedHighG()
 }
 inline void feedBaro()
 {
+  if (baroFeedHook != nullptr)
+  {
+    baroFeedHook();
+    return;
+  }
   const int32_t n = (int32_t)sensorFeed.baro++;
   baro.rawAlt = 1400.0F + 0.01F * (float)(n % 13);
   baro.pressure = 856.0F + 0.001F * (float)(n % 7);
@@ -528,7 +543,8 @@ void setHWSERIAL()
 /** What setup() can change beyond the flight globals: EEPROM, the ports, servos, clock, inputs. */
 #define STARTUP_EXTRA_OBJECTS(X) \
   X(shimEeprom.bytes)            \
-  X(HWSERIAL) X(servos)          \
+  X(HWSERIAL)                    \
+  X(servos)                      \
       X(shimMicrosNow) X(sensorFeed) X(boardInputs.testReads) X(boardInputs.serialPosn)
 
 #define STARTUP_STATE_OBJECTS(X) FLIGHT_STATE_OBJECTS(X) STARTUP_EXTRA_OBJECTS(X)
