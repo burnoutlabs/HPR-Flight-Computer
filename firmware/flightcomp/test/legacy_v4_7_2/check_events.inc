@@ -448,7 +448,7 @@ inline __attribute__((always_inline)) void checkEvents()
   } // End Airstart Flight Mode
 
   // Accelerometer based apogee detection
-  bool accelApogee = (accelVel < -10) ? true : false;
+  bool accelApogee = false; // removed for #14 (was accelVel < -10): the one change from V4.7.2 in these copies
   // Barometric based apogee detection: rocket must be below 9000m and barometric velocity < 0 and motor burnout is detected and accelometer velocity < 70 (needed for Mach proofing)
   bool baroApogee = (baro.Vel < -10 && accelVel < 70 && (baro.Alt + baro.baseAlt) < 9000) ? true : false;
   // Sensor fusion based apogee detection

@@ -63,6 +63,29 @@ void test_prometheus() { checkEvents(flight_prometheus::fixture, replay(flight_p
 void test_hyperion1() { checkEvents(flight_hyperion1::fixture, replay(flight_hyperion1::fixture)); }
 void test_hyperion2() { checkEvents(flight_hyperion2::fixture, replay(flight_hyperion2::fixture)); }
 
+/**
+ * #14: an accelerometer that reads slightly low must not set apogee before the baro apogee. On
+ * Hyperion II the integrated velocity was already -8 m/s at apogee with the logged data, so with
+ * the accelerometer 0.01 or 0.02 g low, accelerometer apogee detection (accelVel < -10) fired
+ * 0.04 and 0.25 s before apogee.
+ */
+static void checkLowAccelerometer(float biasG)
+{
+  restoreFlightState(initialState);
+  replaySettings();
+  SensorModel model;
+  model.accelBias = biasG * STANDARD_GRAVITY;
+  const ReplayFixture &f = flight_hyperion2::fixture;
+  const ReplayResult r = replayFlight(f, model);
+  const float apogeeLag = r.apogee - f.peakMs * 1e-3F;
+  printf("Hyperion II, accelerometer %+.2f g: apogee %+.3f s from the baro apogee, set by%s%s (removed accelerometer detector %+.3f s)\n", biasG, apogeeLag,
+         r.apogeeByBaro ? " baro" : "", r.apogeeByFusion ? " fusion" : "", r.accelApogee - f.peakMs * 1e-3F);
+  TEST_ASSERT_TRUE_MESSAGE(apogeeLag >= 0.0F && apogeeLag <= 0.6F, "apogee not within 0 to 0.6 s after the baro apogee");
+}
+
+void test_hyperion2_accelerometer_0_01_g_low() { checkLowAccelerometer(-0.01F); }
+void test_hyperion2_accelerometer_0_02_g_low() { checkLowAccelerometer(-0.02F); }
+
 void setUp() {}
 void tearDown() {}
 
@@ -73,5 +96,7 @@ int main()
   RUN_TEST(test_prometheus);
   RUN_TEST(test_hyperion1);
   RUN_TEST(test_hyperion2);
+  RUN_TEST(test_hyperion2_accelerometer_0_01_g_low);
+  RUN_TEST(test_hyperion2_accelerometer_0_02_g_low);
   return UNITY_END();
 }

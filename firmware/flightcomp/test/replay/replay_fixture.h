@@ -46,6 +46,9 @@ struct ReplayFixture
 #ifndef REPLAY_NO_HARNESS
 #include "../flight_harness.h"
 
+// The accelerometer apogee threshold V4.7.2 used (accelVel < -10), removed from the flight step
+// for #14; the replay still reports when it would have held, for comparison.
+constexpr auto REMOVED_ACCEL_APOGEE_VEL_MPS = -10;
 constexpr float REPLAY_PAD_SECONDS = 5.0F;
 constexpr float REPLAY_REST_SECONDS = 30.0F;
 
@@ -108,8 +111,9 @@ struct ReplayResult
   float apogeeFire = NAN;
   float mainDeploy = NAN;
   float touchdown = NAN;
-  // apogee detection: when each detector first held with the apogee gate open (burnout confirmed,
-  // false-liftoff check over), and which detectors held on the pass that set events.apogee
+  // apogee detection: when each detector (including the removed accelerometer one) first held
+  // with the apogee gate open (burnout confirmed, false-liftoff check over), and which held on the
+  // pass that set events.apogee
   float accelApogee = NAN;
   float baroApogee = NAN;
   float fusionApogee = NAN;
@@ -173,7 +177,7 @@ inline ReplayResult replayFlight(const ReplayFixture &fixture, const SensorModel
     }
     // the apogee gate and the three detectors, as checkEvents() evaluates them
     const bool gate = events.boosterBurnout && !events.boosterBurnoutCheck && !events.falseLiftoffCheck;
-    const bool accelDet = accelVel < ACCEL_APOGEE_VEL_MPS;
+    const bool accelDet = accelVel < REMOVED_ACCEL_APOGEE_VEL_MPS;
     const bool baroDet = baro.Vel < BARO_APOGEE_VEL_MPS && accelVel < BARO_APOGEE_MACH_LOCK_MPS && (baro.Alt + baro.baseAlt) < BARO_APOGEE_CEILING_M;
     const bool fusionDet = fusionVel < 0;
     if (gate && accelDet && isnan(r.accelApogee) && !events.apogeeFire)

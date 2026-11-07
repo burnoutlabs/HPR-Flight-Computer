@@ -12,6 +12,11 @@
  * Each can be checked against the commit, for example:
  *   git show 7c775e3:firmware/flightcomp/src/flightcomp.cpp | sed -n 1738,1906p \
  *     | diff - firmware/flightcomp/test/legacy_v4_7_2/loop_flight_step.inc
+ * One line differs on purpose. #14 removed accelerometer apogee detection from the flight step,
+ * so check_events.inc line 451 sets accelApogee to false instead of accelVel < -10; the diff
+ * against Event_Logic.h shows only that line. Everything else is V4.7.2 as it was. Against the
+ * unmodified V4.7.2 line, only the low-reading-accelerometer scenario diverges (in events, at
+ * apogee): that is the behaviour #14 changes.
  * Their I/O (digitalWrite, EEPROM.update, the radio timer, syncSD, Serial) is redirected into the
  * same log that RecordingIo writes for the new code.
  *
@@ -333,7 +338,9 @@ void test_apogee_from_a_low_reading_accelerometer()
 {
   startScenario();
   SensorModel model;
-  model.accelBias = -0.5F; // reads 0.05 g low, so its integrated velocity reaches -10 m/s first
+  // reads 0.05 g low, so its integrated velocity reaches -10 m/s before apogee: V4.7.2 set apogee
+  // on that; with accelerometer apogee removed (#14) both sides wait for baro or fusion
+  model.accelBias = -0.5F;
   const RunSummary run = runSideBySide("accelerometer 0.05 g low", SyntheticFlight(singleStage()), model);
   TEST_ASSERT_TRUE(run.finalEvents.apogeeFire);
   TEST_ASSERT_TRUE(run.finalEvents.touchdown);
