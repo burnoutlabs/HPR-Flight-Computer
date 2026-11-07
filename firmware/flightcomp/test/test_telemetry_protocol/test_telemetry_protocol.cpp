@@ -258,6 +258,45 @@ void test_next_hop_index_wraps_and_skips_the_hail_channel()
   TEST_ASSERT_EQUAL_INT16(1, nextHopIndex(HOP_SEQUENCE_LENGTH - 1, hopSequence[0]));
 }
 
+// #13: the hailing channel is the configured frequency's own channel.
+void test_hail_channel_of_each_channel_frequency_is_that_channel()
+{
+  for (int i = 0; i < FHSS_CHANNELS; i++)
+  {
+    TEST_ASSERT_EQUAL_UINT8(i, hailChannel(fhssChannelMHz[i]));
+  }
+}
+
+void test_hail_channel_is_the_nearest_channel()
+{
+  TEST_ASSERT_EQUAL_UINT8(65, hailChannel(915.05F)); // 915.1
+  TEST_ASSERT_EQUAL_UINT8(64, hailChannel(914.96F)); // 914.9
+  TEST_ASSERT_EQUAL_UINT8(0, hailChannel(900.0F));
+  TEST_ASSERT_EQUAL_UINT8(FHSS_CHANNELS - 1, hailChannel(930.0F));
+}
+
+// #13: the flight computer sends its sync packets on the frequency it was configured with,
+// and keeps that frequency in its settings.
+void test_sync_packets_go_out_on_the_configured_frequency()
+{
+  const float configured[] = {902.1F, 902.3F, 915.1F, 927.9F};
+  for (float f : configured)
+  {
+    runTelemetryScenario(true, f);
+    TEST_ASSERT_TRUE(settings.TXfreq == f);
+    int syncs = 0;
+    for (int i = 0; i < sentCount; i++)
+    {
+      if (isSync(sent[i]))
+      {
+        TEST_ASSERT_TRUE(sent[i].freq == f);
+        syncs++;
+      }
+    }
+    TEST_ASSERT_EQUAL_INT(4, syncs);
+  }
+}
+
 int main(int, char **)
 {
   UNITY_BEGIN();
@@ -276,5 +315,8 @@ int main(int, char **)
   RUN_TEST(test_channel_list_is_902_1_to_927_9_in_200khz_steps);
   RUN_TEST(test_hop_sequence_stays_in_the_channel_list);
   RUN_TEST(test_next_hop_index_wraps_and_skips_the_hail_channel);
+  RUN_TEST(test_hail_channel_of_each_channel_frequency_is_that_channel);
+  RUN_TEST(test_hail_channel_is_the_nearest_channel);
+  RUN_TEST(test_sync_packets_go_out_on_the_configured_frequency);
   return UNITY_END();
 }

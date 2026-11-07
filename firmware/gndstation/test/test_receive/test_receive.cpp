@@ -179,6 +179,19 @@ void test_ground_station_hails_where_the_flight_computer_syncs()
   TEST_ASSERT_TRUE(fabs(shimRadioFreqMHz() - radio2.frq) < 0.0001);
 }
 
+// #13: the ground station hails on the frequency it was configured with, the frequency the
+// flight computer syncs on when configured the same.
+void test_hail_frequency_is_the_configured_frequency()
+{
+  const float configured[] = {902.1F, 902.3F, 915.1F, 927.9F};
+  for (float f : configured)
+  {
+    resetGroundStation(true, f, "KK4ELF");
+    TEST_ASSERT_TRUE(radio2.frq == f);
+    TEST_ASSERT_TRUE(fabs(shimRadioFreqMHz() - f) < 0.0001);
+  }
+}
+
 // Hands the flight computer's FHSS transmissions over in order; the ground station hears
 // one only when its radio is tuned to that packet's frequency. Returns the indices heard.
 static std::vector<int> followFlight()
@@ -229,6 +242,7 @@ int main(int, char **)
   RUN_TEST(test_postflight_packet_is_decoded);
   RUN_TEST(test_packet_with_another_callsign_is_ignored);
   RUN_TEST(test_ground_station_hails_where_the_flight_computer_syncs);
+  RUN_TEST(test_hail_frequency_is_the_configured_frequency);
   RUN_TEST(test_ground_station_follows_the_flight_computer_hops);
   return UNITY_END();
 }
