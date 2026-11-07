@@ -19,6 +19,11 @@
  * UBLOX configuration modified from [UBLOX Playground on Arduino](https://playground.arduino.cc/UBlox/GPS).
  */
 
+#include <Arduino.h>
+
+#include "declarations.h"
+#include "GPS.h"
+
 void restoreGPSdefaults()
 {
 

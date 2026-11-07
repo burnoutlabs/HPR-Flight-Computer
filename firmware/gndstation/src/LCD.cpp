@@ -1,3 +1,12 @@
+#include <Arduino.h>
+
+#include "declarations.h"
+#include "gndstation.h"
+#include "LCD.h"
+#include "Radio.h"
+
+// LCD Setup
+SerLCD lcd;
 
 void startupLCD()
 {

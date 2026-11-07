@@ -1,3 +1,10 @@
+#include <Arduino.h>
+
+#include "declarations.h"
+#include "Parse_Packet.h"
+#include "Radio.h"
+#include "SD_Card.h"
+
 void preflightPacket(byte rxPacket[])
 {
 
