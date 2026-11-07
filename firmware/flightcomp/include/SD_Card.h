@@ -10,6 +10,11 @@
 #include "declarations.h"
 #include "flightcomp.h"
 
+// SD card line buffer and the write position in it (defined in SD.cpp, alignas as in
+// declarations.h)
+extern int strPosn;
+alignas(4) extern char dataString[1024];
+
 void beginSD();
 void restartSD();
 void parseEEPROMsettingsSD();

@@ -10,6 +10,10 @@
 #include "Bus_Mgmt.h"
 #include "declarations.h"
 
+// Bus read buffer, defined here with burstRead() so the compiler can tell it apart from
+// the bus records while it fills it
+alignas(4) byte rawData[14];
+
 // Hardware Serial for GPS
 HardwareSerial *HWSERIAL;
 

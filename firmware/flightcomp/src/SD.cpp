@@ -66,6 +66,11 @@ File settingsFile;
 File gpsFile;
 #endif
 
+// SD card line buffer and the write position in it, defined here with the writers so the
+// compiler can tell them apart while it fills the buffer
+int strPosn = 0;
+alignas(4) char dataString[1024];
+
 // GPS log variable
 char GPSlog[1024];
 

@@ -12,6 +12,11 @@
 
 #include <Arduino.h>
 
+// alignas(4) on a byte-aligned array, struct or union: while every global was defined in the
+// one translation unit, GCC gave these word alignment (its -O2 data alignment on ARM) and
+// generated code that relies on it. Most files now see only the extern declaration, so the
+// alignment is stated here, and on the definition, to keep that code the same.
+
 // Header file for all major declared variables
 //-----------------------------------------------
 // Written by SparkyVT, TRA #12111, NAR #85720, L3
@@ -239,7 +244,7 @@ struct SensorConfig
   bool statusRadio = false;
   bool pyroPWM = false;
 };
-extern SensorConfig sensors;
+alignas(4) extern SensorConfig sensors;
 //-----------------------------------------
 // User Settings
 //-----------------------------------------
@@ -296,7 +301,7 @@ extern UserSettings settings;
 //-----------------------------------------
 // Sensor variables
 //-----------------------------------------
-extern byte rawData[14];
+// rawData, the bus read buffer, is declared in Bus_Mgmt.h
 typedef struct
 {
   byte addr;
@@ -389,8 +394,8 @@ struct eventList
   bool touchdown = false;
   bool timeOut = false;
 };
-extern struct eventList events;
-extern struct eventList resetEvents;
+alignas(4) extern struct eventList events;
+alignas(4) extern struct eventList resetEvents;
 //-----------------------------------------
 // Master timing variables
 //-----------------------------------------
@@ -467,11 +472,11 @@ struct PinMap
   uint8_t SD_CS;
   uint8_t firePin = 0;
 };
-extern PinMap pins;
+alignas(4) extern PinMap pins;
 //-----------------------------------------
 // radio variables
 //-----------------------------------------
-extern uint8_t dataPacket[256];
+alignas(4) extern uint8_t dataPacket[256];
 extern bool liftoffSync;
 extern unsigned long TXstartTime;
 extern bool implicitHdr;
@@ -533,7 +538,7 @@ struct ContinuityStatus
   uint8_t reportCode;
   uint8_t beepCode;
 };
-extern ContinuityStatus cont;
+alignas(4) extern ContinuityStatus cont;
 //-----------------------------------------
 // Non-Event Booleans
 //-----------------------------------------
@@ -568,7 +573,7 @@ union CalUnion
   int16_t calValue;
   uint8_t calByte[2];
 };
-extern CalUnion calUnion;
+alignas(4) extern CalUnion calUnion;
 //-----------------------------------------
 // Altitude & Baro Sensor variables
 //-----------------------------------------
@@ -669,15 +674,14 @@ extern uint32_t writeTime;
 extern uint32_t maxWriteTime;
 extern uint32_t writeThreshold;
 extern uint32_t writeThreshCount;
-extern int strPosn;
 extern bool syncApogee;
 extern bool syncMains;
 const byte decPts = 2;
 const byte base = 10;
-extern char dataString[1024];
-extern uint8_t maxAltDigits[6];
-extern uint8_t maxVelDigits[4];
-extern uint8_t voltageDigits[2];
+// strPosn and dataString, the SD card line buffer, are declared in SD_Card.h
+alignas(4) extern uint8_t maxAltDigits[6];
+alignas(4) extern uint8_t maxVelDigits[4];
+alignas(4) extern uint8_t voltageDigits[2];
 extern uint8_t altDigits;
 extern uint8_t velDigits;
 extern uint8_t n;

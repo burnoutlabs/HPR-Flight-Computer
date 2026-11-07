@@ -28,6 +28,7 @@
 #include "Calibration.h"
 #include "declarations.h"
 #include "flightcomp.h"
+#include "SD_Card.h"
 
 // serial input characters for setCanardTrim()
 char a;

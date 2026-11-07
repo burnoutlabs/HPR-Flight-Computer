@@ -9,6 +9,9 @@
 
 #include "board.h"
 
+// Bus read buffer: burstRead() fills it (defined in Bus_Mgmt.cpp, alignas as in declarations.h)
+alignas(4) extern byte rawData[14];
+
 // Hardware Serial for GPS (defined in Bus_Mgmt.cpp)
 extern HardwareSerial *HWSERIAL;
 

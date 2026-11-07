@@ -12,7 +12,7 @@
 //-----------------------------------------
 // Sensor device data
 //-----------------------------------------
-SensorConfig sensors;
+alignas(4) SensorConfig sensors;
 //-----------------------------------------
 // User Settings
 //-----------------------------------------
@@ -20,7 +20,7 @@ UserSettings settings;
 //-----------------------------------------
 // Sensor variables
 //-----------------------------------------
-byte rawData[14];
+// rawData is defined in Bus_Mgmt.cpp
 sensorData accel;
 sensorData mag;
 sensorData gyro;
@@ -35,8 +35,8 @@ pyroMap pyro4;
 //-----------------------------------------
 // flight events
 //-----------------------------------------
-struct eventList events;
-struct eventList resetEvents;
+alignas(4) struct eventList events;
+alignas(4) struct eventList resetEvents;
 //-----------------------------------------
 // Master timing variables
 //-----------------------------------------
@@ -45,11 +45,11 @@ struct timerList resetFltTime;
 //-----------------------------------------
 // GPIO pin mapping
 //-----------------------------------------
-PinMap pins;
+alignas(4) PinMap pins;
 //-----------------------------------------
 // radio variables
 //-----------------------------------------
-uint8_t dataPacket[256];
+alignas(4) uint8_t dataPacket[256];
 bool liftoffSync = false;
 unsigned long TXstartTime;
 bool implicitHdr = false;
@@ -71,7 +71,7 @@ RadioTelemetry radio;
 //-----------------------------------------
 // continuity Booleans
 //-----------------------------------------
-ContinuityStatus cont;
+alignas(4) ContinuityStatus cont;
 //-----------------------------------------
 // Non-Event Booleans
 //-----------------------------------------
@@ -101,7 +101,7 @@ uint8_t filterPosn = 0;
 float highGsmooth;
 float adcConvert = 0.000015259;
 uint16_t ADCmidValue = 32768;
-CalUnion calUnion;
+alignas(4) CalUnion calUnion;
 //-----------------------------------------
 // Altitude & Baro Sensor variables
 //-----------------------------------------
@@ -176,13 +176,12 @@ uint32_t writeTime;
 uint32_t maxWriteTime;
 uint32_t writeThreshold = 10000UL;
 uint32_t writeThreshCount = 0UL;
-int strPosn = 0;
 bool syncApogee = false;
 bool syncMains = false;
-char dataString[1024];
-uint8_t maxAltDigits[6] = {0, 0, 0, 0, 0, 0};
-uint8_t maxVelDigits[4] = {0, 0, 0, 0};
-uint8_t voltageDigits[2] = {0, 0};
+// strPosn and dataString are defined in SD.cpp
+alignas(4) uint8_t maxAltDigits[6] = {0, 0, 0, 0, 0, 0};
+alignas(4) uint8_t maxVelDigits[4] = {0, 0, 0, 0};
+alignas(4) uint8_t voltageDigits[2] = {0, 0};
 uint8_t altDigits = 6;
 uint8_t velDigits = 4;
 uint8_t n = 1;
