@@ -99,4 +99,4 @@ The sources are still Arduino `.ino` tabs, which PlatformIO merges into one tran
 
 `firmware/gndstation/archive` holds earlier ground station sketches for reference. They are not built.
 
-CI builds every env on each push to `master` and each pull request, and writes the flash and RAM use per board to the job summary. The Teensy 3.2 build uses about 78% of its flash, so watch that figure.
+CI builds every env and runs the host unit tests on each push to `master` and each pull request, and writes the flash and RAM use per board to the job summary. The Teensy 3.2 build uses about 78% of its flash, so watch that figure.

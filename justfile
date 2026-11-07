@@ -14,8 +14,8 @@ default:
 build:
     for p in {{ projects }}; do {{ pio }} run -d "$p"; done
 
-[doc("CI equivalent: build every env; changes no tracked file")]
-check: build
+[doc("CI equivalent: build every env and run the host tests; changes no tracked file")]
+check: build test
 
 [doc("Format the firmware sources in place with clang-format")]
 fmt:
