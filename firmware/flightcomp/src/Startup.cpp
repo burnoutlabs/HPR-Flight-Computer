@@ -1223,27 +1223,26 @@ void setup(void)
 
   delay(500);
 
-  // check to see if we are restarting from a powerloss
-  // if so, then we need to rapidly get the system back up and going
-  // call the rapidReset routine and immediately exit void setup
-  uint8_t lastEvent = EEPROM.read(eeprom.lastEvent);
-  if (lastEvent != 27)
-  {
-    EEPROM.update(eeprom.lastEvent, 27);
-    lastEvent = 27;
-  }
+  // check to see if we are restarting from a power loss in flight: the last recorded flight event
+  // is read before anything overwrites it. If the flight can be resumed, rapidReset() brings the
+  // system back up and setup() exits straight into the loop.
+  const uint8_t lastEvent = EEPROM.read(eeprom.lastEvent);
   settings.inflightRecover = EEPROM.read(eeprom.inflightRecover);
-  if (settings.inflightRecover > 0 && (lastEvent < 24 && lastEvent != 6 && lastEvent != 7))
+  if (settings.inflightRecover > 0 && isRecoverableEvent(lastEvent))
   {
-
     // execute the rapid recovery routine
     Serial.print("Rapid Reset Initiated, setting: ");
     Serial.println(settings.inflightRecover);
-    if (rapidReset())
+    if (rapidReset(lastEvent))
     {
       // exit setup and immediately re-enter the loop
       return;
     }
+    Serial.println("Not in flight, starting normally");
+  }
+  if (lastEvent != 27)
+  {
+    EEPROM.update(eeprom.lastEvent, 27);
   }
 
   // Start SD card

@@ -31,7 +31,11 @@
 
 #include "startup_harness.h"
 
-// rapidReset() is unreachable from setup() (#28): any call is logged, and the test fails on it.
+#include "../src/Infilght_Recover.cpp"
+
+// The reference's rapidReset() was unreachable from its setup() (#28): any call is logged, and
+// the test fails on it. The scenarios here leave the in-flight recovery off or have no flight to
+// resume, so the new setup() starts normally too; test_inflight_recovery covers the recovery.
 bool rapidReset()
 {
   logIo("rapidReset");
@@ -456,11 +460,18 @@ void test_settings_clamped_low_old_battery_pin()
 void test_last_event_not_touchdown()
 {
   SetupScenario s;
-  s.name = "lastEvent 3 with recovery on (unreachable)";
+  s.name = "lastEvent 3 with recovery off";
   s.file = sampleSettings();
   s.lastEvent = 3;
+  s.inflightRecover = 0;
   s.reached = [] { return shimEeprom.bytes[eeprom.lastEvent] == 27; };
   runSideBySide(s);
+  SetupScenario underMain;
+  underMain.name = "lastEvent 7 (under the main), recovery on";
+  underMain.file = sampleSettings();
+  underMain.lastEvent = 7;
+  underMain.reached = [] { return shimEeprom.bytes[eeprom.lastEvent] == 27; };
+  runSideBySide(underMain);
 }
 
 void test_other_devices()
