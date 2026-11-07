@@ -98,7 +98,7 @@ IntervalTimer radioTimer;
 //---------------------------
 // User Settings
 //---------------------------
-struct
+struct UserSettings
 {
   boolean radio1enable = true;
   boolean radio2enable = true;
@@ -244,13 +244,13 @@ boolean debugSerial = true;
 float unitConvert = 3.28084F;
 volatile boolean radio1Pkt = false;
 volatile boolean radio2Pkt = false;
-union
+union RadioUnion
 {
   float GPScoord;
   unsigned long radioTime;
   byte unionByte[4];
 } radioUnion;
-union
+union RadioInt
 {
   int16_t unionInt;
   byte unionByte[2];
