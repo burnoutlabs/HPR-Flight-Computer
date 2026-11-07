@@ -24,6 +24,13 @@ typedef bool boolean;
 #define F(string_literal) (string_literal)
 #define PROGMEM
 
+#define lowByte(w) ((uint8_t)((w) & 0xFF))
+#define highByte(w) ((uint8_t)((w) >> 8))
+
+// No interrupts on the host
+inline void noInterrupts() {}
+inline void interrupts() {}
+
 // Test-driven clock
 inline uint32_t shimMicrosNow = 0;
 inline void shimSetMicros(uint32_t us) { shimMicrosNow = us; }
