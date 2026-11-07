@@ -16,7 +16,7 @@
 //-----------------------------------------
 // EEPROM Locations
 //-----------------------------------------
-struct
+struct EepromMap
 {
   int maxFltAlt = 0;  // 00-05: maximum altitude of last flight
   int accelBiasX = 6; // 06-11: accel.bias(X,Y,Z)
@@ -196,11 +196,13 @@ struct
   int gyroBiasX = 255;    // 2
   int gyroBiasY = 257;    // 2
   int gyroBiasZ = 259;    // 2
-} eeprom;
+};
+// Never written: const gives it internal linkage, so each address folds to a constant
+const EepromMap eeprom{};
 //-----------------------------------------
 // Sensor device data
 //-----------------------------------------
-struct
+struct SensorConfig
 {
   byte accel = 0;
   byte mag = 0;
@@ -236,7 +238,7 @@ struct
 //-----------------------------------------
 // User Settings
 //-----------------------------------------
-struct
+struct UserSettings
 {
   bool testMode = false;
   bool calibrationMode = false;
@@ -422,7 +424,7 @@ struct timerList resetFltTime;
 //-----------------------------------------
 // GPIO pin mapping
 //-----------------------------------------
-struct
+struct PinMap
 {
   uint8_t nullCont;
   uint8_t nullFire;
@@ -479,14 +481,14 @@ volatile boolean clearTX = false;
 volatile boolean buildPkt = false;
 volatile boolean syncFlag = false;
 bool sendPkt = false;
-struct
+struct PacketIntervals
 {
   uint32_t preLiftoff = 1000000UL;
   uint32_t inflight = 200000UL;
   uint32_t postFlight = 10000000UL;
   uint32_t samplesPerPkt = 4UL;
 } pktInterval;
-struct
+struct RadioTelemetry
 {
   int16_t packetnum = 0;
   uint8_t event = 0;
@@ -509,7 +511,7 @@ struct
 //-----------------------------------------
 // continuity Booleans
 //-----------------------------------------
-struct
+struct ContinuityStatus
 {
   bool apogee;
   bool main;
@@ -551,7 +553,7 @@ uint8_t filterPosn = 0;
 float highGsmooth;
 float adcConvert = 0.000015259;
 uint16_t ADCmidValue = 32768;
-union
+union CalUnion
 {
   int16_t calValue;
   uint8_t calByte[2];
@@ -559,7 +561,7 @@ union
 //-----------------------------------------
 // Altitude & Baro Sensor variables
 //-----------------------------------------
-struct
+struct BaroData
 {
   float rawAlt = 0.0F;
   float Alt = 0.0F;
@@ -691,7 +693,7 @@ struct eventData
   uint8_t second;
   uint8_t mili;
 };
-struct
+struct GnssData
 {
   float alt = 0.0;
   float maxAlt = 0.0;
@@ -724,17 +726,17 @@ struct
 //-----------------------------------------
 // EEPROM useful unions
 //-----------------------------------------
-union
+union UlongUnion
 {
   unsigned long val;
   byte Byte[4];
 } ulongUnion;
-union
+union IntUnion
 {
   int val;
   byte Byte[2];
 } intUnion;
-union
+union FloatUnion
 {
   float val;
   byte Byte[4];
