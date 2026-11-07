@@ -20,10 +20,17 @@
  * restored and flightStep() runs, then performFlightActions(). The two must leave identical bytes
  * in every global (flight_state.h), log identical I/O in the same order, and agree on whether the
  * pass was in flight. The loop period varies pseudo-randomly between 300 and 700 us.
+ *
+ * The scenarios are synthetic flights (synthetic_flights.h) and the three logged flights of the
+ * replay suite (test/replay/, CC BY 4.0, see ATTRIBUTION.md).
  */
 #include <unity.h>
 
 #include "synthetic_flights.h"
+
+#include "replay/flight_hyperion1.h"
+#include "replay/flight_hyperion2.h"
+#include "replay/flight_prometheus.h"
 
 #include "flight_state.h"
 
@@ -130,7 +137,8 @@ static void startScenario()
   settings.maxAngle = 300;
 }
 
-static RunSummary runSideBySide(const char *name, const SyntheticFlight &flight, const SensorModel &model = SensorModel())
+template <typename Source>
+static RunSummary runSideBySide(const char *name, const Source &flight, const SensorModel &model = SensorModel())
 {
   RunSummary run;
   LoopState loopState;
@@ -455,6 +463,29 @@ void test_stable_rotation_path()
   TEST_ASSERT_TRUE(run.finalEvents.touchdown);
 }
 
+/** A logged flight as a source of sensor truth, with the pad and rest periods replayFlight() adds. */
+struct LoggedFlight
+{
+  ReplayLog log;
+  explicit LoggedFlight(const ReplayFixture &fixture) : log(fixture) {}
+  Truth at(uint32_t micros) const { return log.at(ReplayLog::logTime(micros)); }
+  uint32_t durationMicros() const { return (uint32_t)((REPLAY_PAD_SECONDS + log.t.back() + REPLAY_REST_SECONDS) * 1e6F); }
+};
+
+static void runLoggedFlight(const ReplayFixture &fixture)
+{
+  restoreFlightState(initialState);
+  replaySettings();
+  const RunSummary run = runSideBySide(fixture.name, LoggedFlight(fixture));
+  TEST_ASSERT_TRUE(run.finalEvents.apogeeFire);
+  TEST_ASSERT_TRUE(run.finalEvents.mainDeploy);
+  TEST_ASSERT_TRUE(run.finalEvents.touchdown);
+}
+
+void test_logged_flight_prometheus() { runLoggedFlight(flight_prometheus::fixture); }
+void test_logged_flight_hyperion1() { runLoggedFlight(flight_hyperion1::fixture); }
+void test_logged_flight_hyperion2() { runLoggedFlight(flight_hyperion2::fixture); }
+
 void setUp() {}
 void tearDown() {}
 
@@ -480,5 +511,8 @@ int main()
   RUN_TEST(test_airstart_on_ignition_then_burnout);
   RUN_TEST(test_airstart_inhibited);
   RUN_TEST(test_stable_rotation_path);
+  RUN_TEST(test_logged_flight_prometheus);
+  RUN_TEST(test_logged_flight_hyperion1);
+  RUN_TEST(test_logged_flight_hyperion2);
   return UNITY_END();
 }
