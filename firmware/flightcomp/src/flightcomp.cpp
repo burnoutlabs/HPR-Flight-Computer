@@ -1591,6 +1591,44 @@ void setup(void)
   Serial.println("End Setup");
 } // end setup
 
+/**
+ * @brief Renames the closed flight data file to the GNSS liftoff date and time and the rocket name.
+ *
+ * @details Defined here rather than in SD.cpp so that loop() can inline its early return, as it
+ * did when the flight computer was one sketch.
+ *
+ * The new name is YYYYMMDDHHMM (UTC) followed by a space and the rocket name, with a
+ * .csv extension, for example "202611061530 MyRocket.csv". The rename is by path, so it is called
+ * after writeSDfooterClose() has closed the file. Without a GNSS date at liftoff the file keeps
+ * its FLIGHTnn.txt name, and if the rename fails (the name exists, or the rocket name holds a
+ * character the card's file system rejects) the file is left as it was.
+ */
+void renameFileSD()
+{
+  // month is 0 when no GNSS date was captured at liftoff
+  if (gnss.liftoff.month == 0)
+  {
+    return;
+  }
+  char *p = dataString;
+  itoa(gnss.liftoff.year, p, 10);
+  p += strlen(p);
+  const uint8_t field[4] = {gnss.liftoff.month, gnss.liftoff.day, gnss.liftoff.hour, gnss.liftoff.minute};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    *p++ = '0' + field[i] / 10;
+    *p++ = '0' + field[i] % 10;
+  }
+  *p++ = ' ';
+  // bounded copy: rocketName is not guaranteed to be null-terminated
+  for (uint8_t i = 0; i < sizeof(settings.rocketName) && settings.rocketName[i] != '\0'; i++)
+  {
+    *p++ = settings.rocketName[i];
+  }
+  strcpy(p, ".csv");
+  SD.rename(outputFileName, dataString);
+}
+
 /*!
  * @brief Main flight loop for the flight computer.
  * 

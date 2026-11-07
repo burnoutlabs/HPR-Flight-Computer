@@ -15,6 +15,9 @@
 extern int strPosn;
 alignas(4) extern char dataString[1024];
 
+// name of the open flight data file (defined in SD.cpp)
+extern char outputFileName[20];
+
 void beginSD();
 void restartSD();
 void parseEEPROMsettingsSD();
@@ -23,6 +26,7 @@ void reOpenSD();
 void syncSD();
 void readFlightSettingsSD();
 void writeSDfooterClose();
+// defined in flightcomp.cpp, beside loop(), its only caller
 void renameFileSD();
 void writeIntData(int dataValue);
 void writeULongData(unsigned long dataValue);
