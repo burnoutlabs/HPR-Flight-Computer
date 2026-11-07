@@ -24,6 +24,9 @@ typedef bool boolean;
 #define F(string_literal) (string_literal)
 #define PROGMEM
 
+#define HIGH 1
+#define LOW 0
+
 #define lowByte(w) ((uint8_t)((w) & 0xFF))
 #define highByte(w) ((uint8_t)((w) >> 8))
 

@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <stdint.h>
+
 struct TinyGPSSpeed
 {
   double metersPerSecond = 0.0;
@@ -20,8 +22,21 @@ struct TinyGPSLocation
   double lng() { return longitude; }
 };
 
+struct TinyGPSTime
+{
+  uint8_t hours = 0;
+  uint8_t minutes = 0;
+  uint8_t seconds = 0;
+  uint8_t centiseconds = 0;
+  uint8_t hour() { return hours; }
+  uint8_t minute() { return minutes; }
+  uint8_t second() { return seconds; }
+  uint8_t centisecond() { return centiseconds; }
+};
+
 struct TinyGPSPlus
 {
   TinyGPSLocation location;
   TinyGPSSpeed speed;
+  TinyGPSTime time;
 };
