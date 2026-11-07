@@ -68,7 +68,7 @@ typedef struct
   uint8_t hailChnl = 0;
   uint8_t chnl1;
   uint8_t nextChnl;
-  uint8_t nextChnl2;
+  int16_t nextHop = 0;
   uint8_t chnlUsed = 0;
   boolean syncFreq = true;
   uint32_t lastHopTime = 0UL;
@@ -225,5 +225,3 @@ extern const String pyroTable[10];
 
 extern byte greenCont[5];
 extern byte redCont[5];
-
-extern uint8_t eventPosn;

@@ -252,8 +252,6 @@ void loop()
 {
 
   boolean msgRX = false;
-  boolean pktRX = false;
-  boolean goodPacket = false;
 
   // Serial Print Debug
   if (micros() - timer > 1000000UL && micros() - timeLastNMEA > 500000)
@@ -284,146 +282,17 @@ void loop()
     timer = lastRX;
 
     // get the packet from the radio
-    radioRecvPkt(activeRadio->dataPacket);
+    bool pktRX = radioRecvPkt(activeRadio->dataPacket);
 
     // get signal strength
     signalStrength = pktRssi;
 
-    // check the callsign
-    goodPacket = true;
-    if (activeRadio->FHSS)
+    // if it is from our flight computer, parse it, log it, display it and follow the frequency hops
+    if (pktRX)
     {
-      eventPosn = 0;
-    }
-    for (uint8_t i = 0; i < eventPosn; i++)
-    {
-      if (activeRadio->dataPacket[i] != settings.callSign[i])
-      {
-        goodPacket = false;
-        if (activeRadio->num == 1)
-        {
-          radio1Pkt = false;
-        }
-        else
-        {
-          radio2Pkt = false;
-        }
-        break;
-      }
-    }
-  }
-
-  // if we have a good packet
-  if (goodPacket)
-  {
-
-    // set event flags
-    event = (byte)activeRadio->dataPacket[0];
-    if (settings.debugSerial)
-    {
-      if (event != 255)
-      {
-        Serial.println("-------Data Packet Received--------");
-      }
-      else
-      {
-        Serial.println("-------Sync Packet Received--------");
-      }
-      Serial.print("Packet on radio");
-      Serial.print(activeRadio->num);
-      Serial.print(", event: ");
-      Serial.println(event);
-      Serial.print("Length: ");
-      Serial.println(len);
-      Serial.print("TimeStamp: ");
-      Serial.println(activeRadio->lastRX);
-    }
-    // determine if it is a sustainer or booster packet
-    if (event < 21)
-    {
-      parseSustainer = true;
-    }
-    else if (event == 26 || event == 27 || event == 28)
-    {
-      parseSustainer = true;
-    }
-    else if (event != 255 && event < 33)
-    {
-      parseBooster = true;
+      processPacket();
     }
 
-    // Create the SD file
-    if (parseSustainer && !sustainerFileCreated && SDinit)
-    {
-      createSustainerFile();
-    }
-    if (parseBooster && !boosterFileCreated && SDinit)
-    {
-      createBoosterFile();
-    }
-
-    // sync packet
-    if (event == 255)
-    {
-      syncPkt(activeRadio->dataPacket);
-    }
-
-    // preflight packet
-    else if (event == 0 || event == 30)
-    {
-      // parse the preFlight packet
-      preflightPacket(activeRadio->dataPacket);
-      // signal established
-      signalEst = true;
-      activeRadio->signalEst = true;
-      // set lost signal time
-      lostSignalTime = 2000000UL;
-      // LCD
-      preflightLCD();
-    }
-
-    // inflight packet
-    else if (event < 26 && event != 28)
-    {
-      // set lost signal time
-      lostSignalTime = 2000000UL;
-
-      // write the last pre-flight packet to the SD card
-      if (SDinit && sustainerPreFlightWrite && parseSustainer)
-      {
-        writePreflightData();
-      }
-      if (SDinit && boosterPreFlightWrite && parseBooster)
-      {
-        writePreflightData();
-      }
-
-      // parse the packet
-      inflightPacket(activeRadio->dataPacket);
-
-      // display to LCD
-      inflightLCD();
-    }
-
-    // postflight packet
-    else if (event == 26 || event == 27 || event == 29 || event == 31)
-    {
-      // set lost signal time
-      lostSignalTime = 35000000UL;
-      // parse the packet
-      postflightPacket(activeRadio->dataPacket);
-      // display to LCD
-      postflightLCD();
-    }
-
-    // error packet
-    else
-    {
-      errorLCD();
-    }
-
-    parseSustainer = false;
-    parseBooster = false;
     if (activeRadio->num == 1)
     {
       radio1Pkt = false;
@@ -432,8 +301,7 @@ void loop()
     {
       radio2Pkt = false;
     }
-    goodPacket = false;
-  } // end check Radio2
+  } // end check radios
 
   // On FHSS, if signal was established on the ground but a packet was missed, then move to the next channel
   if (event == 0 && radio1.FHSS && micros() - radio1.lastHopTime > 2000000UL && radio1.signalEst && radio1.chnlUsed < 3)
