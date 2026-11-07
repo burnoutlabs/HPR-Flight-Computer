@@ -4,7 +4,7 @@
  *
  * The sketch's .ino tabs are one translation unit on the board, so this does the
  * same for the part under test: the shims in test/shim stand in for the Teensy
- * core and libraries, declarations.h supplies the real globals, and the two tabs
+ * core and libraries, globals.cpp supplies the real globals, and the two tabs
  * are included as they are, not copied. Include it from exactly one .cpp per test
  * suite: it defines globals.
  *
@@ -19,6 +19,7 @@
 #include <TinyGPS++.h>
 
 #include "../src/declarations.h"
+#include "../src/globals.cpp"
 
 // Objects that flightcomp.ino defines and Rotation.ino uses.
 TinyGPSPlus GPS;

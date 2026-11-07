@@ -1645,13 +1645,6 @@ void setup(void)
   Serial.println("End Setup");
 } // end setup
 
-// loop debug and analysis variables
-int cyclesBtwn = 0;
-uint32_t sampleTime = 0UL;
-uint32_t sampleStart = 0UL;
-uint32_t sampleTimeCheck = 0UL;
-uint32_t debugTimer = 0UL;
-
 /*!
  * @brief Main flight loop for the flight computer.
  * 
