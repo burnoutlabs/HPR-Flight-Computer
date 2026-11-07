@@ -28,10 +28,7 @@ sensorData highG;
 //-----------------------------------------
 // pyro variables
 //-----------------------------------------
-pyroMap pyro1;
-pyroMap pyro2;
-pyroMap pyro3;
-pyroMap pyro4;
+pyroMap pyros[4];
 //-----------------------------------------
 // flight events
 //-----------------------------------------
@@ -206,14 +203,7 @@ FloatUnion floatUnion;
 // Active Stabilization
 //-----------------------------------------
 char userInput;
-int8_t servo1trim = 0;
-int8_t servo2trim = 0;
-int8_t servo3trim = 0;
-int8_t servo4trim = 0;
-int8_t servo5trim = 0;
-int8_t servo6trim = 0;
-int8_t servo7trim = 0;
-int8_t servo8trim = 0;
+int8_t servoTrim[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 uint32_t timeLastControl = 0UL;
 float Kp = 0.0F;
 float Ki = 0.0F;

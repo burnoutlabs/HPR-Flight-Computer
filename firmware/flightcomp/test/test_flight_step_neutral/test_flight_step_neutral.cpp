@@ -77,6 +77,12 @@ static LegacyTimer radioTimer;
 //-----------------------------------------
 // The reference: V4.7.2's code, verbatim
 //-----------------------------------------
+// The reference names the pyro channels pyro1 to pyro4, which are pyros[0] to pyros[3] now
+static pyroMap &pyro1 = pyros[0];
+static pyroMap &pyro2 = pyros[1];
+static pyroMap &pyro3 = pyros[2];
+static pyroMap &pyro4 = pyros[3];
+
 #define EEPROM legacyEeprom
 #define Serial legacySerial
 #define checkEvents legacyCheckEvents

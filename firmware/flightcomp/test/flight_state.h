@@ -15,7 +15,7 @@
 #include <vector>
 
 #define FLIGHT_STATE_OBJECTS(X) \
-  X(sensors) X(settings) X(accel) X(mag) X(gyro) X(highG) X(pyro1) X(pyro2) X(pyro3) X(pyro4) \
+  X(sensors) X(settings) X(accel) X(mag) X(gyro) X(highG) X(pyros) \
   X(events) X(resetEvents) X(fltTime) X(resetFltTime) X(pins) X(dataPacket) X(liftoffSync) \
   X(TXstartTime) X(implicitHdr) X(syncFreq) X(pktPosn) X(pktSize) X(sampNum) X(packetSamples) \
   X(gpsTransmit) X(TX) X(SDradioTX) X(radioMode) X(clearTX) X(buildPkt) X(syncFlag) X(sendPkt) \
@@ -32,8 +32,7 @@
   X(writeStart) X(writeTime) X(maxWriteTime) X(writeThreshold) X(writeThreshCount) X(syncApogee) \
   X(syncMains) X(maxAltDigits) X(maxVelDigits) X(voltageDigits) X(altDigits) X(velDigits) X(n) \
   X(voltage) X(writeVolt) X(voltRate) X(voltReading) X(lastVolt) X(reportCode) X(postFlightCode) \
-  X(gnss) X(ulongUnion) X(intUnion) X(floatUnion) X(userInput) X(servo1trim) X(servo2trim) \
-  X(servo3trim) X(servo4trim) X(servo5trim) X(servo6trim) X(servo7trim) X(servo8trim) \
+  X(gnss) X(ulongUnion) X(intUnion) X(floatUnion) X(userInput) X(servoTrim) \
   X(timeLastControl) X(Kp) X(Ki) X(Kd) X(GPSecho) X(radioDebug) X(TXdataFile) X(cyclesBtwn) \
   X(sampleTime) X(sampleStart) X(sampleTimeCheck) X(debugTimer) X(radioFnctn) X(beginAccel) \
   X(beginGyro) X(beginMag) X(beginHighG) X(beginBaro) X(beginRadio) X(getAccel) X(getGyro) \

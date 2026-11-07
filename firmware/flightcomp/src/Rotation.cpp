@@ -450,13 +450,13 @@ void setCanards()
 
   // Set the fin positions
   // fin pointed in the positive-y rocket-frame
-  canardYaw1.write(throwServo1 - servo1trim);
+  servos[0].write(throwServo1 - servoTrim[0]);
   // fin pointed in the negative-y rocket-frame
-  canardYaw2.write(throwServo2 - servo2trim);
+  servos[1].write(throwServo2 - servoTrim[1]);
   // fin pointed in the positive-x rocket-frame
-  canardPitch3.write(throwServo3 - servo3trim);
+  servos[2].write(throwServo3 - servoTrim[2]);
   // fin pointed in the negative-x rocket-frame
-  canardPitch4.write(throwServo4 - servo4trim);
+  servos[3].write(throwServo4 - servoTrim[3]);
 
   // output debugging over serial
   const boolean serialPlotter = true;
@@ -632,9 +632,9 @@ void setRTB()
 
   // Set the fin positions
   // fin pointed in the positive-x rocket-frame
-  canardPitch3.write(throwServo3 - servo3trim);
+  servos[2].write(throwServo3 - servoTrim[2]);
   // fin pointed in the negative-x rocket-frame
-  canardPitch4.write(throwServo4 - servo4trim);
+  servos[3].write(throwServo4 - servoTrim[3]);
 
   //-------------------------------------------------------------------------------------------------------------------
   // aim the vehicle body twoards the return point with fins 1 & 2
@@ -683,9 +683,9 @@ void setRTB()
 
   // Set the fin positions
   // fin pointed in the positive-y rocket-frame
-  canardYaw1.write(throwServo1 - servo1trim);
+  servos[0].write(throwServo1 - servoTrim[0]);
   // fin pointed in the negative-y rocket-frame
-  canardYaw2.write(throwServo2 - servo2trim);
+  servos[1].write(throwServo2 - servoTrim[1]);
 
 } // end setRTB
 

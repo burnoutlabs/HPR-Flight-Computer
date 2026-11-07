@@ -427,27 +427,17 @@ static void writeSettingsEEPROM()
  */
 void configurePyroChannels()
 {
-  // configure pyro outupts
-  pyro1.func = settings.pyro1Func;
-  pyro1.contPin = pins.pyro1Cont;
-  pyro1.firePin = pins.pyro1Fire;
-  pyro1.fireStatus = false;
-  pyro1.fireStart = 0UL;
-  pyro2.func = settings.pyro2Func;
-  pyro2.contPin = pins.pyro2Cont;
-  pyro2.firePin = pins.pyro2Fire;
-  pyro2.fireStatus = false;
-  pyro2.fireStart = 0UL;
-  pyro3.func = settings.pyro3Func;
-  pyro3.contPin = pins.pyro3Cont;
-  pyro3.firePin = pins.pyro3Fire;
-  pyro3.fireStatus = false;
-  pyro3.fireStart = 0UL;
-  pyro4.func = settings.pyro4Func;
-  pyro4.contPin = pins.pyro4Cont;
-  pyro4.firePin = pins.pyro4Fire;
-  pyro4.fireStatus = false;
-  pyro4.fireStart = 0UL;
+  const char funcs[4] = {settings.pyro1Func, settings.pyro2Func, settings.pyro3Func, settings.pyro4Func};
+  const uint8_t contPins[4] = {pins.pyro1Cont, pins.pyro2Cont, pins.pyro3Cont, pins.pyro4Cont};
+  const uint8_t firePins[4] = {pins.pyro1Fire, pins.pyro2Fire, pins.pyro3Fire, pins.pyro4Fire};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    pyros[i].func = funcs[i];
+    pyros[i].contPin = contPins[i];
+    pyros[i].firePin = firePins[i];
+    pyros[i].fireStatus = false;
+    pyros[i].fireStart = 0UL;
+  }
 }
 
 /**
@@ -512,17 +502,16 @@ void configureRadio()
  */
 void attachServos()
 {
-  // attach the servos
-  canardYaw1.attach(pins.servo1);
-  canardYaw2.attach(pins.servo2);
-  canardPitch3.attach(pins.servo3);
-  canardPitch4.attach(pins.servo4);
-
-  // read the trim settings from EEPROM
-  servo1trim = (int8_t)EEPROM.read(eeprom.servo1trim);
-  servo2trim = (int8_t)EEPROM.read(eeprom.servo2trim);
-  servo3trim = (int8_t)EEPROM.read(eeprom.servo3trim);
-  servo4trim = (int8_t)EEPROM.read(eeprom.servo4trim);
+  const uint8_t servoPins[4] = {pins.servo1, pins.servo2, pins.servo3, pins.servo4};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    servos[i].attach(servoPins[i]);
+  }
+  // read the trim settings from EEPROM (servo 1's at eeprom.servo1trim, the rest after it)
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    servoTrim[i] = (int8_t)EEPROM.read(eeprom.servo1trim + i);
+  }
 }
 
 /**
@@ -1334,13 +1323,13 @@ void setup(void)
     Serial.print(F("Flight Profile: "));
     Serial.println(settings.fltProfile);
     Serial.print(F("Pyro 4 Function: "));
-    Serial.println(pyro4.func);
+    Serial.println(pyros[3].func);
     Serial.print(F("Pyro 3 Function: "));
-    Serial.println(pyro3.func);
+    Serial.println(pyros[2].func);
     Serial.print(F("Pyro 2 Function: "));
-    Serial.println(pyro2.func);
+    Serial.println(pyros[1].func);
     Serial.print(F("Pyro 1 Function: "));
-    Serial.println(pyro1.func);
+    Serial.println(pyros[0].func);
   }
 
   // check for silent mode
@@ -1369,30 +1358,30 @@ void setup(void)
     if (settings.testMode)
     {
       Serial.print(F("Servo1 Trim: "));
-      Serial.println(servo1trim);
+      Serial.println(servoTrim[0]);
       Serial.print(F("Servo2 Trim: "));
-      Serial.println(servo2trim);
+      Serial.println(servoTrim[1]);
       Serial.print(F("Servo3 Trim: "));
-      Serial.println(servo3trim);
+      Serial.println(servoTrim[2]);
       Serial.print(F("Servo4 Trim: "));
-      Serial.println(servo4trim);
+      Serial.println(servoTrim[3]);
     }
 
     // Test canards
-    canardYaw1.write(120 - servo1trim);
-    canardYaw2.write(120 - servo2trim);
-    canardPitch3.write(120 - servo3trim);
-    canardPitch4.write(120 - servo4trim);
+    for (uint8_t i = 0; i < 4; i++)
+    {
+      servos[i].write(120 - servoTrim[i]);
+    }
     delay(1000);
-    canardYaw1.write(60 - servo1trim);
-    canardYaw2.write(60 - servo2trim);
-    canardPitch3.write(60 - servo3trim);
-    canardPitch4.write(60 - servo4trim);
+    for (uint8_t i = 0; i < 4; i++)
+    {
+      servos[i].write(60 - servoTrim[i]);
+    }
     delay(1000);
-    canardYaw1.write(90 - servo1trim);
-    canardYaw2.write(90 - servo2trim);
-    canardPitch3.write(90 - servo3trim);
-    canardPitch4.write(90 - servo4trim);
+    for (uint8_t i = 0; i < 4; i++)
+    {
+      servos[i].write(90 - servoTrim[i]);
+    }
   }
 
   // otherwise disable the servos and ensure that stray voltages do not cause any attached servos to move
@@ -1596,13 +1585,13 @@ void setup(void)
   if (settings.testMode)
   {
     Serial.print("Pyro4 Continuity: ");
-    Serial.println((pyro4.contStatus) ? "Y" : "N");
+    Serial.println((pyros[3].contStatus) ? "Y" : "N");
     Serial.print("Pyro3 Continuity: ");
-    Serial.println((pyro3.contStatus) ? "Y" : "N");
+    Serial.println((pyros[2].contStatus) ? "Y" : "N");
     Serial.print("Pyro2 Continuity: ");
-    Serial.println((pyro2.contStatus) ? "Y" : "N");
+    Serial.println((pyros[1].contStatus) ? "Y" : "N");
     Serial.print("Pyro1 Continuity: ");
-    Serial.println((pyro1.contStatus) ? "Y" : "N");
+    Serial.println((pyros[0].contStatus) ? "Y" : "N");
     Serial.print(F("Reporting continuity code: "));
     Serial.println(cont.beepCode);
   }
@@ -1650,139 +1639,58 @@ void setup(void)
   Serial.println("End Setup");
 } // end setup
 
+/**
+ * @brief Note a pyro function whose channel has continuity.
+ */
+static void markContinuity(char func)
+{
+  switch (func)
+  {
+  case 'M':
+    cont.main = true;
+    break;
+  case 'A':
+    cont.apogee = true;
+    break;
+  case 'I':
+    cont.upperStage = true;
+    break;
+  case 'B':
+    cont.boosterSep = true;
+    break;
+  case '1':
+    cont.airStart1 = true;
+    break;
+  case '2':
+    cont.airStart2 = true;
+    break;
+  case 'N':
+    cont.noFunc = true;
+    break;
+  }
+}
+
+/**
+ * @brief Read each pyro channel's continuity and, before liftoff, set the continuity flags, the
+ * error and the preflight beep and report codes.
+ */
 void checkPyroContinuity()
 {
 
   // check continuity
-  pyro1.contStatus = ((digitalRead(pyro1.contPin) == HIGH) ? true : false);
-  pyro2.contStatus = ((digitalRead(pyro2.contPin) == HIGH) ? true : false);
-  pyro3.contStatus = ((digitalRead(pyro3.contPin) == HIGH) ? true : false);
-  pyro4.contStatus = ((digitalRead(pyro4.contPin) == HIGH) ? true : false);
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    pyros[i].contStatus = ((digitalRead(pyros[i].contPin) == HIGH) ? true : false);
+  }
 
   if (!events.liftoff)
   {
-    if (pyro1.contStatus)
+    // note which functions have continuity
+    for (uint8_t i = 0; i < 4; i++)
     {
-      if (pyro1.func == 'M')
+      if (pyros[i].contStatus)
       {
-        cont.main = true;
-      }
-      if (pyro1.func == 'A')
-      {
-        cont.apogee = true;
-      }
-      if (pyro1.func == 'I')
-      {
-        cont.upperStage = true;
-      }
-      if (pyro1.func == 'B')
-      {
-        cont.boosterSep = true;
-      }
-      if (pyro1.func == '1')
-      {
-        cont.airStart1 = true;
-      }
-      if (pyro1.func == '2')
-      {
-        cont.airStart2 = true;
-      }
-      if (pyro1.func == 'N')
-      {
-        cont.noFunc = true;
-      }
-    }
-    if (pyro2.contStatus)
-    {
-      if (pyro2.func == 'M')
-      {
-        cont.main = true;
-      }
-      if (pyro2.func == 'A')
-      {
-        cont.apogee = true;
-      }
-      if (pyro2.func == 'I')
-      {
-        cont.upperStage = true;
-      }
-      if (pyro2.func == 'B')
-      {
-        cont.boosterSep = true;
-      }
-      if (pyro2.func == '1')
-      {
-        cont.airStart1 = true;
-      }
-      if (pyro2.func == '2')
-      {
-        cont.airStart2 = true;
-      }
-      if (pyro2.func == 'N')
-      {
-        cont.noFunc = true;
-      }
-    }
-    if (pyro3.contStatus)
-    {
-      if (pyro3.func == 'M')
-      {
-        cont.main = true;
-      }
-      if (pyro3.func == 'A')
-      {
-        cont.apogee = true;
-      }
-      if (pyro3.func == 'I')
-      {
-        cont.upperStage = true;
-      }
-      if (pyro3.func == 'B')
-      {
-        cont.boosterSep = true;
-      }
-      if (pyro3.func == '1')
-      {
-        cont.airStart1 = true;
-      }
-      if (pyro3.func == '2')
-      {
-        cont.airStart2 = true;
-      }
-      if (pyro3.func == 'N')
-      {
-        cont.noFunc = true;
-      }
-    }
-    if (pyro4.contStatus)
-    {
-      if (pyro4.func == 'M')
-      {
-        cont.main = true;
-      }
-      if (pyro4.func == 'A')
-      {
-        cont.apogee = true;
-      }
-      if (pyro4.func == 'I')
-      {
-        cont.upperStage = true;
-      }
-      if (pyro4.func == 'B')
-      {
-        cont.boosterSep = true;
-      }
-      if (pyro4.func == '1')
-      {
-        cont.airStart1 = true;
-      }
-      if (pyro4.func == '2')
-      {
-        cont.airStart2 = true;
-      }
-      if (pyro4.func == 'N')
-      {
-        cont.noFunc = true;
+        markContinuity(pyros[i].func);
       }
     }
 
@@ -1794,46 +1702,27 @@ void checkPyroContinuity()
         Serial.println(F("Complex Pyros Not Detected! Flight Profile set to single stage"));
       }
       settings.fltProfile = 'S';
-      if (pyro1.func == 'I' || pyro1.func == 'B' || pyro1.func == '1' || pyro1.func == '2')
+      for (uint8_t i = 0; i < 4; i++)
       {
-        pyro1.func = 'N';
-      }
-      if (pyro2.func == 'I' || pyro2.func == 'B' || pyro2.func == '1' || pyro2.func == '2')
-      {
-        pyro2.func = 'N';
-      }
-      if (pyro3.func == 'I' || pyro3.func == 'B' || pyro3.func == '1' || pyro3.func == '2')
-      {
-        pyro3.func = 'N';
-      }
-      if (pyro4.func == 'I' || pyro4.func == 'B' || pyro4.func == '1' || pyro4.func == '2')
-      {
-        pyro4.func = 'N';
+        if (pyros[i].func == 'I' || pyros[i].func == 'B' || pyros[i].func == '1' || pyros[i].func == '2')
+        {
+          pyros[i].func = 'N';
+        }
       }
     }
 
     // Look for continuity problems
-    if (!pyro1.contStatus && pyro1.func != 'N')
+    bool anyContinuity = false;
+    for (uint8_t i = 0; i < 4; i++)
     {
-      cont.error = true;
-      cont.reportCode = cont.beepCode = 1;
+      if (!pyros[i].contStatus && pyros[i].func != 'N')
+      {
+        cont.error = true;
+        cont.reportCode = cont.beepCode = i + 1;
+      }
+      anyContinuity = anyContinuity || pyros[i].contStatus;
     }
-    if (!pyro2.contStatus && pyro2.func != 'N')
-    {
-      cont.error = true;
-      cont.reportCode = cont.beepCode = 2;
-    }
-    if (!pyro3.contStatus && pyro3.func != 'N')
-    {
-      cont.error = true;
-      cont.reportCode = cont.beepCode = 3;
-    }
-    if (!pyro4.contStatus && pyro4.func != 'N')
-    {
-      cont.error = true;
-      cont.reportCode = cont.beepCode = 4;
-    }
-    if (!pyro1.contStatus && !pyro2.contStatus && !pyro3.contStatus && !pyro4.contStatus)
+    if (!anyContinuity)
     {
       cont.reportCode = 0;
       cont.beepCode = 1;

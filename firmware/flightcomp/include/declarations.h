@@ -356,10 +356,8 @@ typedef struct
   uint8_t contPin;
   uint8_t firePin;
 } pyroMap;
-extern pyroMap pyro1;
-extern pyroMap pyro2;
-extern pyroMap pyro3;
-extern pyroMap pyro4;
+// the four pyro channels: pyros[0] is pyro 1
+extern pyroMap pyros[4];
 //-----------------------------------------
 // flight events
 //-----------------------------------------
@@ -765,14 +763,8 @@ extern FloatUnion floatUnion;
 // Active Stabilization
 //-----------------------------------------
 extern char userInput;
-extern int8_t servo1trim;
-extern int8_t servo2trim;
-extern int8_t servo3trim;
-extern int8_t servo4trim;
-extern int8_t servo5trim;
-extern int8_t servo6trim;
-extern int8_t servo7trim;
-extern int8_t servo8trim;
+// servo trims in degrees, by servo: servoTrim[0] is servo 1
+extern int8_t servoTrim[8];
 const uint32_t controlInterval = 50000UL;
 extern uint32_t timeLastControl;
 extern float Kp;

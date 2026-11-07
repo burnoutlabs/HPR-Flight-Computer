@@ -43,6 +43,21 @@ bool rapidReset()
 //-----------------------------------------
 namespace legacy
 {
+// The reference's names for the pyro channels, servos and servo trims, which are elements of
+// pyros, servos and servoTrim now
+static pyroMap &pyro1 = pyros[0];
+static pyroMap &pyro2 = pyros[1];
+static pyroMap &pyro3 = pyros[2];
+static pyroMap &pyro4 = pyros[3];
+static PWMServo &canardYaw1 = servos[0];
+static PWMServo &canardYaw2 = servos[1];
+static PWMServo &canardPitch3 = servos[2];
+static PWMServo &canardPitch4 = servos[3];
+static int8_t &servo1trim = servoTrim[0];
+static int8_t &servo2trim = servoTrim[1];
+static int8_t &servo3trim = servoTrim[2];
+static int8_t &servo4trim = servoTrim[3];
+
 #include "../legacy_setup/parse_beep.inc"
 
 #include "../legacy_setup/check_pyro_continuity.inc"
@@ -327,7 +342,7 @@ void test_test_mode_with_servos_uncalibrated_first_use()
   s.calibrated = false;
   s.initialUse = true;
   s.testButton = {{2, LOW}, {1, HIGH}};
-  s.reached = [] { return settings.testMode && !settings.calibrationMode && canardYaw1.pin == 3 && settings.TXpwr == 2 && radio.event == Booster_Preflight; };
+  s.reached = [] { return settings.testMode && !settings.calibrationMode && servos[0].pin == 3 && settings.TXpwr == 2 && radio.event == Booster_Preflight; };
   runSideBySide(s);
 }
 
@@ -369,7 +384,7 @@ void test_radio_off_two_stage_without_pyros()
   s.radioEN = 33;
   s.file.FHSS = true;
   s.file.TXfreq = 430.0F;
-  s.reached = [] { return settings.fltProfile == 'S' && pyro1.func == 'N' && pyro2.func == 'N' && !settings.FHSS; };
+  s.reached = [] { return settings.fltProfile == 'S' && pyros[0].func == 'N' && pyros[1].func == 'N' && !settings.FHSS; };
   runSideBySide(s);
 }
 

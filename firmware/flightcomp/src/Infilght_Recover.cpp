@@ -188,150 +188,150 @@ bool rapidReset()
   settings.fltProfile = 'S';
 
   // check continuity
-  pyro1.contStatus = ((digitalRead(pyro1.contPin) == HIGH) ? true : false);
-  pyro2.contStatus = ((digitalRead(pyro2.contPin) == HIGH) ? true : false);
-  pyro3.contStatus = ((digitalRead(pyro3.contPin) == HIGH) ? true : false);
-  pyro4.contStatus = ((digitalRead(pyro4.contPin) == HIGH) ? true : false);
+  pyros[0].contStatus = ((digitalRead(pyros[0].contPin) == HIGH) ? true : false);
+  pyros[1].contStatus = ((digitalRead(pyros[1].contPin) == HIGH) ? true : false);
+  pyros[2].contStatus = ((digitalRead(pyros[2].contPin) == HIGH) ? true : false);
+  pyros[3].contStatus = ((digitalRead(pyros[3].contPin) == HIGH) ? true : false);
 
-  if (pyro1.contStatus)
+  if (pyros[0].contStatus)
   {
-    if (pyro1.func == 'M')
+    if (pyros[0].func == 'M')
     {
       cont.main = true;
     }
-    if (pyro1.func == 'A')
+    if (pyros[0].func == 'A')
     {
       cont.apogee = true;
     }
-    if (pyro1.func == 'I')
+    if (pyros[0].func == 'I')
     {
       cont.upperStage = true;
     }
-    if (pyro1.func == 'B')
+    if (pyros[0].func == 'B')
     {
       cont.boosterSep = true;
     }
-    if (pyro1.func == '1')
+    if (pyros[0].func == '1')
     {
       cont.airStart1 = true;
     }
-    if (pyro1.func == '2')
+    if (pyros[0].func == '2')
     {
       cont.airStart2 = true;
     }
-    if (pyro1.func == 'N')
+    if (pyros[0].func == 'N')
     {
       cont.noFunc = true;
     }
   }
-  if (pyro2.contStatus)
+  if (pyros[1].contStatus)
   {
-    if (pyro2.func == 'M')
+    if (pyros[1].func == 'M')
     {
       cont.main = true;
     }
-    if (pyro2.func == 'A')
+    if (pyros[1].func == 'A')
     {
       cont.apogee = true;
     }
-    if (pyro2.func == 'I')
+    if (pyros[1].func == 'I')
     {
       cont.upperStage = true;
     }
-    if (pyro2.func == 'B')
+    if (pyros[1].func == 'B')
     {
       cont.boosterSep = true;
     }
-    if (pyro2.func == '1')
+    if (pyros[1].func == '1')
     {
       cont.airStart1 = true;
     }
-    if (pyro2.func == '2')
+    if (pyros[1].func == '2')
     {
       cont.airStart2 = true;
     }
-    if (pyro2.func == 'N')
+    if (pyros[1].func == 'N')
     {
       cont.noFunc = true;
     }
   }
-  if (pyro3.contStatus)
+  if (pyros[2].contStatus)
   {
-    if (pyro3.func == 'M')
+    if (pyros[2].func == 'M')
     {
       cont.main = true;
     }
-    if (pyro3.func == 'A')
+    if (pyros[2].func == 'A')
     {
       cont.apogee = true;
     }
-    if (pyro3.func == 'I')
+    if (pyros[2].func == 'I')
     {
       cont.upperStage = true;
     }
-    if (pyro3.func == 'B')
+    if (pyros[2].func == 'B')
     {
       cont.boosterSep = true;
     }
-    if (pyro3.func == '1')
+    if (pyros[2].func == '1')
     {
       cont.airStart1 = true;
     }
-    if (pyro3.func == '2')
+    if (pyros[2].func == '2')
     {
       cont.airStart2 = true;
     }
-    if (pyro3.func == 'N')
+    if (pyros[2].func == 'N')
     {
       cont.noFunc = true;
     }
   }
-  if (pyro4.contStatus)
+  if (pyros[3].contStatus)
   {
-    if (pyro4.func == 'M')
+    if (pyros[3].func == 'M')
     {
       cont.main = true;
     }
-    if (pyro4.func == 'A')
+    if (pyros[3].func == 'A')
     {
       cont.apogee = true;
     }
-    if (pyro4.func == 'I')
+    if (pyros[3].func == 'I')
     {
       cont.upperStage = true;
     }
-    if (pyro4.func == 'B')
+    if (pyros[3].func == 'B')
     {
       cont.boosterSep = true;
     }
-    if (pyro4.func == '1')
+    if (pyros[3].func == '1')
     {
       cont.airStart1 = true;
     }
-    if (pyro4.func == '2')
+    if (pyros[3].func == '2')
     {
       cont.airStart2 = true;
     }
-    if (pyro4.func == 'N')
+    if (pyros[3].func == 'N')
     {
       cont.noFunc = true;
     }
   }
 
   // Look for continuity problems
-  if (!pyro1.contStatus && pyro1.func != 'N')
+  if (!pyros[0].contStatus && pyros[0].func != 'N')
   {
     cont.error = true;
   }
-  if (!pyro2.contStatus && pyro2.func != 'N')
+  if (!pyros[1].contStatus && pyros[1].func != 'N')
   {
     cont.error = true;
   }
-  if (!pyro3.contStatus && pyro3.func != 'N')
+  if (!pyros[2].contStatus && pyros[2].func != 'N')
   {
     cont.error = true;
   }
-  if (!pyro4.contStatus && pyro4.func != 'N')
+  if (!pyros[3].contStatus && pyros[3].func != 'N')
   {
     cont.error = true;
   }

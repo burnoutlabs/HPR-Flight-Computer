@@ -15,14 +15,9 @@ const float codeVersion = 4.72;
 extern TinyGPSPlus GPS;
 
 // Servo Setup (defined in flightcomp.cpp)
-extern PWMServo canardYaw1;
-extern PWMServo canardYaw2;
-extern PWMServo canardPitch3;
-extern PWMServo canardPitch4;
-extern PWMServo actionServo5;
-extern PWMServo actionServo6;
-extern PWMServo actionServo7;
-extern PWMServo actionServo8;
+// Servos 1-8: servos[0] and [1] are the yaw canards, [2] and [3] the pitch canards, [4] to [7]
+// the action servos
+extern PWMServo servos[8];
 
 void loop(void);
 void parseBeep(uint32_t value, uint8_t array[], uint8_t arrayLen);

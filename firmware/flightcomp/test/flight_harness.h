@@ -92,18 +92,18 @@ inline void configureSensors()
 /** Pyro outputs as setup() wires them: channel n fires on pin 20 + n. */
 inline void configurePyros(char f1, char f2, char f3, char f4)
 {
-  settings.pyro1Func = pyro1.func = f1;
-  settings.pyro2Func = pyro2.func = f2;
-  settings.pyro3Func = pyro3.func = f3;
-  settings.pyro4Func = pyro4.func = f4;
-  pyro1.firePin = 21;
-  pyro2.firePin = 22;
-  pyro3.firePin = 23;
-  pyro4.firePin = 24;
-  pyro1.contStatus = f1 != 'N';
-  pyro2.contStatus = f2 != 'N';
-  pyro3.contStatus = f3 != 'N';
-  pyro4.contStatus = f4 != 'N';
+  settings.pyro1Func = pyros[0].func = f1;
+  settings.pyro2Func = pyros[1].func = f2;
+  settings.pyro3Func = pyros[2].func = f3;
+  settings.pyro4Func = pyros[3].func = f4;
+  pyros[0].firePin = 21;
+  pyros[1].firePin = 22;
+  pyros[2].firePin = 23;
+  pyros[3].firePin = 24;
+  pyros[0].contStatus = f1 != 'N';
+  pyros[1].contStatus = f2 != 'N';
+  pyros[2].contStatus = f3 != 'N';
+  pyros[3].contStatus = f4 != 'N';
 }
 
 /** The testMode overrides setup() applies to the flight step's inputs. */

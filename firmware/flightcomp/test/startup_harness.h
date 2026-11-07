@@ -303,11 +303,11 @@ inline void feedBaro()
   baro.temperature = 21.5F;
 }
 
-#define LOGGED_BEGIN(name)  \
-  bool name()               \
-  {                         \
-    logIo(#name);           \
-    return true;            \
+#define LOGGED_BEGIN(name) \
+  bool name()              \
+  {                        \
+    logIo(#name);          \
+    return true;           \
   }
 #define LOGGED_GET(name, feed) \
   void name()                  \
@@ -526,19 +526,20 @@ void setHWSERIAL()
 // Whole state
 //-----------------------------------------
 /** What setup() can change beyond the flight globals: EEPROM, the ports, servos, clock, inputs. */
-#define STARTUP_EXTRA_OBJECTS(X)                                                                  \
-  X(shimEeprom.bytes) X(HWSERIAL) X(canardYaw1) X(canardYaw2) X(canardPitch3) X(canardPitch4) \
-  X(shimMicrosNow) X(sensorFeed) X(boardInputs.testReads) X(boardInputs.serialPosn)
+#define STARTUP_EXTRA_OBJECTS(X) \
+  X(shimEeprom.bytes)            \
+  X(HWSERIAL) X(servos)          \
+      X(shimMicrosNow) X(sensorFeed) X(boardInputs.testReads) X(boardInputs.serialPosn)
 
 #define STARTUP_STATE_OBJECTS(X) FLIGHT_STATE_OBJECTS(X) STARTUP_EXTRA_OBJECTS(X)
 
 inline std::vector<uint8_t> saveStartupState()
 {
   std::vector<uint8_t> bytes;
-#define SAVE_OBJECT(object)                                                      \
-  {                                                                              \
-    const uint8_t *p = (const uint8_t *)&(object);                                \
-    bytes.insert(bytes.end(), p, p + sizeof(object));                            \
+#define SAVE_OBJECT(object)                           \
+  {                                                   \
+    const uint8_t *p = (const uint8_t *)&(object);    \
+    bytes.insert(bytes.end(), p, p + sizeof(object)); \
   }
   STARTUP_STATE_OBJECTS(SAVE_OBJECT)
 #undef SAVE_OBJECT

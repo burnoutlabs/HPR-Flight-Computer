@@ -126,14 +126,7 @@ TinyGPSPlus GPS;
 bool restoreDefaults = false;
 
 // Servo Setup
-PWMServo canardYaw1;
-PWMServo canardYaw2;
-PWMServo canardPitch3;
-PWMServo canardPitch4;
-PWMServo actionServo5;
-PWMServo actionServo6;
-PWMServo actionServo7;
-PWMServo actionServo8;
+PWMServo servos[8];
 
 // Timer for the radio
 #if defined(STM32_CORE_VERSION)
@@ -368,10 +361,10 @@ void loop(void)
         renameFileSD();
       }
       // shutoff all pyro outputs
-      digitalWrite(pyro1.firePin, LOW);
-      digitalWrite(pyro2.firePin, LOW);
-      digitalWrite(pyro3.firePin, LOW);
-      digitalWrite(pyro4.firePin, LOW);
+      for (uint8_t i = 0; i < 4; i++)
+      {
+        digitalWrite(pyros[i].firePin, LOW);
+      }
       // shutoff the live-pyro alarm
       livePyroAlarm = false;
       // if FHSS, start the postFlight synch packet timer

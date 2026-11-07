@@ -135,93 +135,37 @@ void pushFlightAction(FlightActions &actions, FlightAction kind, uint8_t arg)
 void firePyros(char event, FlightActions &actions)
 {
   pyroFire = true;
-  if (pyro1.func == event)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    pins.firePin = pyro1.firePin;
-    pushFlightAction(actions, FlightAction::PinHigh, pyro1.firePin);
-    pyro1.fireStatus = true;
-    pyro1.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro2.func == event)
-  {
-    pins.firePin = pyro2.firePin;
-    pushFlightAction(actions, FlightAction::PinHigh, pyro2.firePin);
-    pyro2.fireStatus = true;
-    pyro2.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro3.func == event)
-  {
-    pins.firePin = pyro3.firePin;
-    pushFlightAction(actions, FlightAction::PinHigh, pyro3.firePin);
-    pyro3.fireStatus = true;
-    pyro3.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro4.func == event)
-  {
-    pins.firePin = pyro4.firePin;
-    pushFlightAction(actions, FlightAction::PinHigh, pyro4.firePin);
-    pyro4.fireStatus = true;
-    pyro4.fireStart = fltTime.timeCurrent;
+    if (pyros[i].func == event)
+    {
+      pins.firePin = pyros[i].firePin;
+      pushFlightAction(actions, FlightAction::PinHigh, pyros[i].firePin);
+      pyros[i].fireStatus = true;
+      pyros[i].fireStart = fltTime.timeCurrent;
+    }
   }
 }
 
 void pulsePyro(FlightActions &actions)
 {
-  static boolean pyro1fire = false;
-  static boolean pyro2fire = false;
-  static boolean pyro3fire = false;
-  static boolean pyro4fire = false;
+  // whether each channel's pin is high in its pulse cycle
+  static boolean pinHigh[4] = {false, false, false, false};
 
-  if (pyro1.fireStatus)
+  for (uint8_t i = 0; i < 4; i++)
   {
-    if (pyro1fire)
+    if (pyros[i].fireStatus)
     {
-      pushFlightAction(actions, FlightAction::PinLow, pyro1.firePin);
-      pyro1fire = false;
-    }
-    else
-    {
-      pushFlightAction(actions, FlightAction::PinHigh, pyro1.firePin);
-      pyro1fire = true;
-    }
-  }
-  if (pyro2.fireStatus)
-  {
-    if (pyro2fire)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro2.firePin);
-      pyro2fire = false;
-    }
-    else
-    {
-      pushFlightAction(actions, FlightAction::PinHigh, pyro2.firePin);
-      pyro2fire = true;
-    }
-  }
-  if (pyro3.fireStatus)
-  {
-    if (pyro3fire)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro3.firePin);
-      pyro3fire = false;
-    }
-    else
-    {
-      pushFlightAction(actions, FlightAction::PinHigh, pyro3.firePin);
-      pyro3fire = true;
-    }
-  }
-  if (pyro4.fireStatus)
-  {
-    if (pyro4fire)
-    {
-      pushFlightAction(actions, FlightAction::PinLow, pyro4.firePin);
-      pyro4fire = false;
-    }
-    else
-    {
-      pushFlightAction(actions, FlightAction::PinHigh, pyro4.firePin);
-      pyro4fire = true;
+      if (pinHigh[i])
+      {
+        pushFlightAction(actions, FlightAction::PinLow, pyros[i].firePin);
+        pinHigh[i] = false;
+      }
+      else
+      {
+        pushFlightAction(actions, FlightAction::PinHigh, pyros[i].firePin);
+        pinHigh[i] = true;
+      }
     }
   }
 }
