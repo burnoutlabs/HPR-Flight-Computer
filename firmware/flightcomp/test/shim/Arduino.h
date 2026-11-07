@@ -4,7 +4,8 @@
  *
  * Holds only what the firmware sources under test use. The constants match
  * Teensyduino's wiring.h. Time does not advance on its own: a test sets it
- * with shimSetMicros() / shimAdvanceMicros(), and micros()/millis() read it.
+ * with shimSetMicros() / shimAdvanceMicros(), and micros()/millis() read it
+ * (micros() can also step it, see shimMicrosPerCall).
  * Serial accepts and discards everything.
  */
 #pragma once
@@ -34,11 +35,19 @@ typedef bool boolean;
 inline void noInterrupts() {}
 inline void interrupts() {}
 
-// Test-driven clock
+// Test-driven clock. A test that runs code which polls micros() in a loop (setup()'s sampling)
+// sets shimMicrosPerCall, and each micros() call then advances the clock by that much after
+// reading it.
 inline uint32_t shimMicrosNow = 0;
+inline uint32_t shimMicrosPerCall = 0;
 inline void shimSetMicros(uint32_t us) { shimMicrosNow = us; }
 inline void shimAdvanceMicros(uint32_t us) { shimMicrosNow += us; }
-inline uint32_t micros() { return shimMicrosNow; }
+inline uint32_t micros()
+{
+  const uint32_t now = shimMicrosNow;
+  shimMicrosNow += shimMicrosPerCall;
+  return now;
+}
 inline uint32_t millis() { return shimMicrosNow / 1000; }
 
 // Serial that discards its output

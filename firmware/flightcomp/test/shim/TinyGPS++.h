@@ -12,6 +12,13 @@ struct TinyGPSSpeed
 {
   double metersPerSecond = 0.0;
   double mps() { return metersPerSecond; }
+  double mph() { return metersPerSecond * 2.23693629; }
+};
+
+struct TinyGPSCourse
+{
+  double degrees = 0.0;
+  double deg() { return degrees; }
 };
 
 struct TinyGPSLocation
@@ -38,5 +45,6 @@ struct TinyGPSPlus
 {
   TinyGPSLocation location;
   TinyGPSSpeed speed;
+  TinyGPSCourse course;
   TinyGPSTime time;
 };

@@ -46,55 +46,55 @@
 // dummyVoid(): executes no code when a routine or sensor is absent
 // dummyBool(): executes no code and returns true when a routine or sensor is absent
 
+/**
+ * @brief Point the device function pointers at the drivers for the device IDs read from EEPROM.
+ *
+ * @details
+ * An ID that names no device gets the same default for every device of a kind:
+ * - the accelerometer and the barometer, which every flight needs, default to the external
+ *   library stubs (Device_Drivers_External.cpp). Until a library is written into them, their
+ *   begin function returns false, so setup() stops with the sensor failure alarm;
+ * - the gyro, high-G accelerometer, magnetometer, radio and GNSS receiver, which a board may
+ *   leave out, default to the no-op dummies, whose begin functions report success.
+ * The accelerometers with a gyro on the same chip (IDs 2-6 and 8) read both in getAccel(), so
+ * their gyro IDs (2-6) take the gyro default: no separate gyro read.
+ * Every pointer is set for every ID from 0 to 255.
+ */
 void setPolyMorphs()
 {
-
-  // To enable faster execution and simplicity of code, the "begin" and "get" sensor functions are pointers
 
   // accelerometer pointers
   switch (sensors.accel)
   {
-
   case 1:
     beginAccel = beginLSM303_A;
     getAccel = getLSM303_A;
     break;
-
   case 2:
-    beginAccel = beginGyro = beginLSM9DS1_AG;
-    getAccel = getGyro = getLSM9DS1_AG;
+    beginAccel = beginLSM9DS1_AG;
+    getAccel = getLSM9DS1_AG;
     break;
-
   case 3:
-    beginAccel = beginGyro = beginLSM6DS33;
-    getAccel = getGyro = getLSM6DS33;
+    beginAccel = beginLSM6DS33;
+    getAccel = getLSM6DS33;
     break;
-
   case 4:
-    beginAccel = beginGyro = beginMPU6050;
-    getAccel = getGyro = getMPU6050;
+    beginAccel = beginMPU6050;
+    getAccel = getMPU6050;
     break;
-
   case 5:
-    beginAccel = beginGyro = beginMPU9250_AG;
-    getAccel = getGyro = getMPU9250_AG;
+    beginAccel = beginMPU9250_AG;
+    getAccel = getMPU9250_AG;
     break;
-
   case 6:
-    beginAccel = beginGyro = beginLSM6DSOX;
-    getAccel = getGyro = getLSM6DSOX;
+    beginAccel = beginLSM6DSOX;
+    getAccel = getLSM6DSOX;
     break;
-
-  case 7: // External Library
-    beginAccel = beginExternalAccel;
-    getAccel = getExternalAccel;
-    break;
-
   case 8:
-    beginAccel = beginGyro = beginLSM6DS3TR;
-    getAccel = getGyro = getLSM6DS3TR;
+    beginAccel = beginLSM6DS3TR;
+    getAccel = getLSM6DS3TR;
     break;
-
+  case 7: // External Library
   default:
     beginAccel = beginExternalAccel;
     getAccel = getExternalAccel;
@@ -104,48 +104,40 @@ void setPolyMorphs()
   // gyroscope pointers
   switch (sensors.gyro)
   {
-
   case 1:
     beginGyro = beginL3GD20H;
     getGyro = getL3GD20H;
     break;
-
   case 7: // External Library
     beginGyro = beginExternalGyro;
     getGyro = getExternalGyro;
     break;
-
-  default: // all other casesare
+  default: // none, or read with the accelerometer
     beginGyro = dummyBool;
     getGyro = dummyVoid;
     break;
   }
 
-  // High-G Accelerometer Pointers
+  // high-G accelerometer pointers
   switch (sensors.highG)
   {
-
   case 1:
     beginHighG = beginADS1115;
     getHighG = getADS1115;
     break;
-
   case 2:
     beginHighG = beginH3LIS331DL;
     getHighG = getH3LIS331DL;
     break;
-
   case 3:
     beginHighG = beginADXL377;
     getHighG = getADXL377;
     break;
-
-  case 4:
+  case 4: // External Library
     beginHighG = beginExternalHighG;
     getHighG = getExternalHighG;
     break;
-
-  default:
+  default: // none
     beginHighG = dummyBool;
     getHighG = dummyVoid;
     break;
@@ -154,92 +146,70 @@ void setPolyMorphs()
   // magnetometer pointers
   switch (sensors.mag)
   {
-
   case 1:
     beginMag = beginLSM303_M;
     getMag = getLSM303_M;
     break;
-
   case 2:
     beginMag = beginLSM9DS1_M;
     getMag = getLSM9DS1_M;
     break;
-
   case 3:
     beginMag = beginLIS3MDL;
     getMag = getLIS3MDL;
     break;
-
   case 4:
     beginMag = beginMPU9250_M;
     getMag = getMPU9250_M;
     break;
-
   case 5: // External Library
     beginMag = beginExternalMag;
     getMag = getExternalMag;
     break;
-
-  default:
+  default: // none
     beginMag = dummyBool;
     getMag = dummyVoid;
     break;
   }
 
-  // set barometer pointers
+  // barometer pointers
   switch (sensors.baro)
   {
-
   case 1:
     beginBaro = beginBMP180;
     getBaro = getBMP180;
     break;
-
   case 2:
     beginBaro = beginMPL3115A2;
     getBaro = getMPL3115A2;
     break;
-
   case 3:
     beginBaro = beginBMP280;
     getBaro = getBMP280;
     break;
-
   case 4:
     beginBaro = beginBMP388;
     getBaro = getBMP388;
     break;
-
-  case 5:
+  case 5: // MS5611
+  case 6: // MS5607
     beginBaro = beginMS56XX;
     getBaro = getMS56XX;
     break;
-
-  case 6:
-    beginBaro = beginMS56XX;
-    getBaro = getMS56XX;
-    break;
-
   case 7:
     beginBaro = beginLPS25H;
     getBaro = getLPS25H;
     break;
-
-  case 8:
-    beginBaro = beginExternalBaro;
-    getBaro = getExternalBaro;
-    break;
-
+  case 8: // External Library
   default:
     beginBaro = beginExternalBaro;
     getBaro = getExternalBaro;
     break;
   }
 
-  // set radio pointers
+  // radio pointers
   switch (sensors.radio)
   {
-
   case 1:
     beginRadio = beginSX127X;
     setRadioFreq = setFreqSX127X;
@@ -247,24 +217,21 @@ void setPolyMorphs()
     radioSleep = sleepSX127X;
     radioSendPkt = sendPktSX127X;
     break;
-
-  case 2:
+  case 2: // the RFD900 has no frequency, power or sleep commands here
     beginRadio = beginRFD900;
     setRadioFreq = dummyBool1;
     setRadioPWR = dummyBool2;
     radioSleep = dummyVoid;
     radioSendPkt = sendPktRFD900;
     break;
-
-  case 3:
+  case 3: // External Library
     beginRadio = beginExternalRadio;
     setRadioFreq = setExternalRadioFreq;
     setRadioPWR = setExternalRadioPwr;
     radioSleep = externalRadioSleep;
     radioSendPkt = sendExternalRadioDataPkt;
     break;
-
-  default: // no radio
+  default: // none
     beginRadio = dummyBool;
     setRadioFreq = dummyBool1;
     setRadioPWR = dummyBool2;
@@ -273,35 +240,22 @@ void setPolyMorphs()
     break;
   }
 
-  // set GNSS device pointers
+  // GNSS receiver pointers
   switch (sensors.GNSS)
   {
-
-  case 1:
+  case 1: // NEO-M8N
+  case 2: // SAM/MAX/NEO-M8Q/W
+  case 3: // NEO-M9N
     GNSSrestorDefaults = UBLOXrestorDefaults;
     GNSSconfig = UBLOXconfig;
     GNSSpowerSave = UBLOXpowerSave;
     break;
-
-  case 2:
-    GNSSrestorDefaults = UBLOXrestorDefaults;
-    GNSSconfig = UBLOXconfig;
-    GNSSpowerSave = UBLOXpowerSave;
-    break;
-
-  case 3:
-    GNSSrestorDefaults = UBLOXrestorDefaults;
-    GNSSconfig = UBLOXconfig;
-    GNSSpowerSave = UBLOXpowerSave;
-    break;
-
-  case 4:
+  case 4: // Adafruit Ultimate GPS or External Library
     GNSSrestorDefaults = dummyVoid;
     GNSSconfig = ExternalGNSSconfig;
     GNSSpowerSave = externalGNSS_PSM;
     break;
-
-  default: // no GNSS
+  default: // none
     GNSSrestorDefaults = dummyVoid;
     GNSSconfig = dummyVoid;
     GNSSpowerSave = dummyVoid;

@@ -1,6 +1,6 @@
 /**
  * @file flightcomp.h
- * @brief Setup, the flight loop, and the beeper, continuity and timer helpers in flightcomp.cpp.
+ * @brief The flight loop, and the beeper, settings and timer helpers in flightcomp.cpp.
  */
 #pragma once
 
@@ -24,10 +24,8 @@ extern PWMServo actionServo6;
 extern PWMServo actionServo7;
 extern PWMServo actionServo8;
 
-void setup(void);
 void loop(void);
 void parseBeep(uint32_t value, uint8_t array[], uint8_t arrayLen);
-void checkPyroContinuity();
 void readEEPROMsettings();
 void clearIRQ();
 void timerBuildPkt();

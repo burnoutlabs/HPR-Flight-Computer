@@ -14,6 +14,7 @@
 #include "Calibration.h"
 #include "SD_Card.h"
 #include "Speed_Trig.h"
+#include "Startup.h"
 
 /**
  * @brief Routine to restart the system in-flight in case of accidental power loss or system reset.
@@ -30,76 +31,10 @@
 bool rapidReset()
 {
 
-  // Read pin settings from EEPROM
-  Serial.print(F("Reading EEPROM..."));
-  pins.accelCS = EEPROM.read(eeprom.accelCSpin);
-  pins.gyroCS = EEPROM.read(eeprom.gyroCSpin);
-  pins.magCS = EEPROM.read(eeprom.magCSpin);
-  pins.highG_CS = EEPROM.read(eeprom.highGcsPin);
-  pins.SD_CS = EEPROM.read(eeprom.sdCSpin);
-  pins.baroCS = EEPROM.read(eeprom.baroCSpin);
-  pins.pyro1Cont = EEPROM.read(eeprom.pyro1ContPin);
-  pins.pyro1Fire = EEPROM.read(eeprom.pyro1FirePin);
-  pins.pyro2Cont = EEPROM.read(eeprom.pyro2ContPin);
-  pins.pyro2Fire = EEPROM.read(eeprom.pyro2FirePin);
-  pins.pyro3Cont = EEPROM.read(eeprom.pyro3ContPin);
-  pins.pyro3Fire = EEPROM.read(eeprom.pyro3FirePin);
-  pins.pyro4Cont = EEPROM.read(eeprom.pyro4ContPin);
-  pins.pyro4Fire = EEPROM.read(eeprom.pyro4FirePin);
-  pins.nullCont = EEPROM.read(eeprom.nullPin);
-  pins.nullFire = pins.nullCont;
-  pins.beep = EEPROM.read(eeprom.beepPin);
-  pins.batt = EEPROM.read(eeprom.battReadPin);
-  pins.testGnd = EEPROM.read(eeprom.testModeGndPin);
-  pins.testRead = EEPROM.read(eeprom.testModeRdPin);
-  pins.radioCS = EEPROM.read(eeprom.radioCSpin);
-  pins.radioIRQ = EEPROM.read(eeprom.radioIRQpin);
-  pins.radioRST = EEPROM.read(eeprom.radioRstPin);
-  pins.radioEN = EEPROM.read(eeprom.radioEnPin);
-  pins.servo1 = EEPROM.read(eeprom.servo1pin);
-  pins.servo2 = EEPROM.read(eeprom.servo2pin);
-  pins.servo3 = EEPROM.read(eeprom.servo3pin);
-  pins.servo4 = EEPROM.read(eeprom.servo4pin);
-  pins.servo5 = EEPROM.read(eeprom.servo5pin);
-  pins.servo6 = EEPROM.read(eeprom.servo6pin);
-  pins.servo7 = EEPROM.read(eeprom.servo7pin);
-  pins.servo8 = EEPROM.read(eeprom.servo8pin);
-  // read sensor settings from EEPROM
-  sensors.accel = EEPROM.read(eeprom.accelID);
-  sensors.mag = EEPROM.read(eeprom.magID);
-  sensors.gyro = EEPROM.read(eeprom.gyroID);
-  sensors.highG = EEPROM.read(eeprom.highGID);
-  sensors.baro = EEPROM.read(eeprom.baroID);
-  sensors.radio = EEPROM.read(eeprom.radioID);
-  sensors.GNSS = EEPROM.read(eeprom.GPSID);
-  sensors.accelBusType = (char)EEPROM.read(eeprom.accelBusType);
-  sensors.gyroBusType = (char)EEPROM.read(eeprom.gyroBusType);
-  sensors.magBusType = (char)EEPROM.read(eeprom.magBusType);
-  sensors.highGBusType = (char)EEPROM.read(eeprom.highGBusType);
-  sensors.baroBusType = (char)EEPROM.read(eeprom.baroBusType);
-  sensors.sdBusType = (char)EEPROM.read(eeprom.sdBusType);
-  sensors.gnssBusType = (char)EEPROM.read(eeprom.gpsBusType);
-  sensors.radioBusType = (char)EEPROM.read(eeprom.radioBusType);
+  // Read the hardware settings from EEPROM, as setup() does
+  readHardwareSettingsEEPROM();
+  // unlike setup(), the accelerometer bus number is read from the bus type's address (#28)
   sensors.accelBusNum = EEPROM.read(eeprom.accelBusType);
-  sensors.gyroBusNum = EEPROM.read(eeprom.gyroBusNum);
-  sensors.magBusNum = EEPROM.read(eeprom.magBusNum);
-  sensors.highGBusNum = EEPROM.read(eeprom.highGBusNum);
-  sensors.baroBusNum = EEPROM.read(eeprom.baroBusNum);
-  sensors.sdBusNum = EEPROM.read(eeprom.sdBusNum);
-  sensors.gnssBusNum = EEPROM.read(eeprom.gpsBusNum);
-  sensors.radioBusNum = EEPROM.read(eeprom.radioBusNum);
-  for (byte i = 0; i < sizeof(settings.callSign); i++)
-  {
-    settings.callSign[i] = EEPROM.read(eeprom.callSign + i);
-  }
-  settings.callSign[sizeof(settings.callSign) - 1] = '\0';
-  settings.HWid[0] = (char)EEPROM.read(eeprom.HWversion);
-  settings.HWid[1] = '.';
-  settings.HWid[2] = (char)EEPROM.read(eeprom.HWsubVersion);
-  settings.HWid[3] = '.';
-  settings.HWid[4] = (char)EEPROM.read(eeprom.HWunitNum);
-  settings.HWid[5] = '\0';
-  Serial.println(F("complete!"));
 
   // Set the mode of the output pins
   pinMode(pins.nullCont, INPUT);
@@ -175,26 +110,7 @@ bool rapidReset()
   analogReadResolution(16);
 
   // configure pyro outupts
-  pyro1.func = settings.pyro1Func;
-  pyro1.contPin = pins.pyro1Cont;
-  pyro1.firePin = pins.pyro1Fire;
-  pyro1.fireStatus = false;
-  pyro1.fireStart = 0UL;
-  pyro2.func = settings.pyro2Func;
-  pyro2.contPin = pins.pyro2Cont;
-  pyro2.firePin = pins.pyro2Fire;
-  pyro2.fireStatus = false;
-  pyro2.fireStart = 0UL;
-  pyro3.func = settings.pyro3Func;
-  pyro3.contPin = pins.pyro3Cont;
-  pyro3.firePin = pins.pyro3Fire;
-  pyro3.fireStatus = false;
-  pyro3.fireStart = 0UL;
-  pyro4.func = settings.pyro4Func;
-  pyro4.contPin = pins.pyro4Cont;
-  pyro4.firePin = pins.pyro4Fire;
-  pyro4.fireStatus = false;
-  pyro4.fireStart = 0UL;
+  configurePyroChannels();
 
   // setup the radio
   if (!settings.TXenable)
