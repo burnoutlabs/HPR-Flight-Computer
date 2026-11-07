@@ -1,0 +1,7 @@
+{
+  "name": "TelemetryProtocol",
+  "version": "1.0.0",
+  "description": "Telemetry packet format and 915MHz FHSS channel plan shared by the flight computer and the ground station. Hardware-free.",
+  "frameworks": "*",
+  "platforms": "*"
+}
