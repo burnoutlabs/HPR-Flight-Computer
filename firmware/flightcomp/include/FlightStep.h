@@ -12,9 +12,11 @@
  * the order the old code did them. performFlightActions() then carries them out, in that order,
  * through an I/O type: the board's in flightcomp.cpp, a recording one in the host tests.
  *
- * Apogee is detected by any of three methods once booster burnout is confirmed and the
- * false-liftoff check has ended: accelerometer-integrated velocity, barometric velocity
- * (below 9000m above sea level, Mach-proofed by the accelerometer velocity), or sensor fusion.
+ * Apogee is detected by either of two methods once booster burnout is confirmed and the
+ * false-liftoff check has ended: barometric velocity (below 9000m above sea level, Mach-proofed
+ * by the accelerometer velocity), or sensor fusion. Accelerometer-integrated velocity alone is
+ * not used: replays of logged flights showed it firing before apogee with accelerometer errors of
+ * 0.01 g or 1%, and up to 1.1 s early with a second flight accelerometer (#14).
  *
  * flightStep(), checkEvents() and their helpers run on every pass of the flight loop, so they
  * are defined here, always inline, for loop() to inline them.
@@ -53,8 +55,6 @@ constexpr auto FUSION_ALT_BARO_WEIGHT = 0.05;
 constexpr auto IGNITION_ACCEL_MPS2 = 10.0;
 // A sustainer burnout counts only this long after its ignition
 constexpr auto SUSTAINER_BURN_MIN_US = 100000UL;
-// Apogee: accelerometer-integrated velocity below this (m/s)
-constexpr auto ACCEL_APOGEE_VEL_MPS = -10;
 // Apogee: barometric velocity below this (m/s), while the accelerometer velocity is below the
 // Mach lock speed and the barometric altitude above sea level (not above the pad) is below the
 // ceiling
@@ -583,14 +583,12 @@ inline __attribute__((always_inline)) void checkEvents(FlightActions &actions)
     }
   } // End Airstart Flight Mode
 
-  // Accelerometer based apogee detection
-  bool accelApogee = (accelVel < ACCEL_APOGEE_VEL_MPS) ? true : false;
   // Barometric based apogee detection: rocket must be below 9000m and barometric velocity < 0 and motor burnout is detected and accelometer velocity < 70 (needed for Mach proofing)
   bool baroApogee = (baro.Vel < BARO_APOGEE_VEL_MPS && accelVel < BARO_APOGEE_MACH_LOCK_MPS && (baro.Alt + baro.baseAlt) < BARO_APOGEE_CEILING_M) ? true : false;
   // Sensor fusion based apogee detection
   bool fusionApogee = (fusionVel < 0) ? true : false;
   // Check for apogee event
-  if (!events.apogee && !pyroFire && events.boosterBurnout && !events.boosterBurnoutCheck && !events.falseLiftoffCheck && (accelApogee || baroApogee || fusionApogee))
+  if (!events.apogee && !pyroFire && events.boosterBurnout && !events.boosterBurnoutCheck && !events.falseLiftoffCheck && (baroApogee || fusionApogee))
   {
     events.apogee = true;
     fltTime.apogee = fltTime.timeCurrent;
