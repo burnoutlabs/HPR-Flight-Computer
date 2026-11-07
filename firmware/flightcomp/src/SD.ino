@@ -63,6 +63,9 @@ File gpsFile;
 // GPS log variable
 char GPSlog[1024];
 
+// name of the open flight data file, for renameFileSD()
+char outputFileName[20] = "";
+
 /**
  * @brief Initializes the SD card.
  */
@@ -514,6 +517,7 @@ void createNextFileSD()
     fileName[8] = '.';
   }
   outputFile = SD.open(fileName, FILE_WRITE);
+  strcpy(outputFileName, fileName);
   // Print header
   outputFile.print(F("timeStamp,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,highGx,highGy,highGz,"));
   if (settings.testMode)
@@ -588,6 +592,7 @@ void reOpenSD()
   fileName[8] = '.';
   // outputFile = SD.open(dataString, FILE_WRITE | O_AT_END);
   outputFile = SD.open(fileName, FILE_WRITE);
+  strcpy(outputFileName, fileName);
 } // end reOpenSD
 
 void syncSD()
@@ -1083,36 +1088,39 @@ void writeSDfooterClose()
   }
 } // end SD footer and close
 
+/**
+ * @brief Renames the closed flight data file to the GNSS liftoff date and time and the rocket name.
+ *
+ * @details The new name is YYYYMMDDHHMM (UTC) followed by a space and the rocket name, with a
+ * .csv extension, for example "202611061530 MyRocket.csv". The rename is by path, so it is called
+ * after writeSDfooterClose() has closed the file. Without a GNSS date at liftoff the file keeps
+ * its FLIGHTnn.txt name, and if the rename fails (the name exists, or the rocket name holds a
+ * character the card's file system rejects) the file is left as it was.
+ */
 void renameFileSD()
 {
-  dataString[0] = '2';
-  dataString[1] = '0';
-  strPosn = 2;
-  writeIntData(gnss.liftoff.year);
-  strPosn--;
-  writeIntData(gnss.liftoff.month);
-  strPosn--;
-  writeIntData(gnss.liftoff.day);
-  strPosn--;
-  writeIntData(gnss.liftoff.minute);
-  strPosn--;
-  dataString[strPosn] = ' ';
-  strPosn++;
-  uint8_t i = 0;
-  while (settings.rocketName[i] != '\0' && i < sizeof(settings.rocketName))
+  // month is 0 when no GNSS date was captured at liftoff
+  if (gnss.liftoff.month == 0)
   {
-    dataString[strPosn] = settings.rocketName[i];
-    i++;
-    strPosn++;
+    return;
   }
-  dataString[strPosn] = '.';
-  strPosn++;
-  dataString[strPosn] = 'c';
-  strPosn++;
-  dataString[strPosn] = 's';
-  strPosn++;
-  dataString[strPosn] = 'v';
-  // outputFile.rename(dataString);
+  char *p = dataString;
+  itoa(gnss.liftoff.year, p, 10);
+  p += strlen(p);
+  const uint8_t field[4] = {gnss.liftoff.month, gnss.liftoff.day, gnss.liftoff.hour, gnss.liftoff.minute};
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    *p++ = '0' + field[i] / 10;
+    *p++ = '0' + field[i] % 10;
+  }
+  *p++ = ' ';
+  // bounded copy: rocketName is not guaranteed to be null-terminated
+  for (uint8_t i = 0; i < sizeof(settings.rocketName) && settings.rocketName[i] != '\0'; i++)
+  {
+    *p++ = settings.rocketName[i];
+  }
+  strcpy(p, ".csv");
+  SD.rename(outputFileName, dataString);
 }
 
 /**
