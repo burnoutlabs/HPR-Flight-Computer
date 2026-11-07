@@ -156,10 +156,6 @@ bool rapidReset()
     beginRadio();
     // Set the radio output power & frequency
     setRadioPWR(settings.TXpwr); // 23 max setting; 20mW=13dBm, 30mW=15dBm, 50mW=17dBm, 100mW=20dBm
-    if (sensors.radio == 2 && settings.FHSS)
-    {
-      pktInterval.preLiftoff = 600000UL;
-    } // sync freq
     setRadioFreq(settings.TXfreq);
   }
 
@@ -205,10 +201,6 @@ bool rapidReset()
   {
     // Set the radio output power & frequency
     setRadioPWR(settings.TXpwr); // 23 max setting; 20mW=13dBm, 30mW=15dBm, 50mW=17dBm, 100mW=20dBm
-    if (sensors.radio == 2 && settings.FHSS)
-    {
-      pktInterval.preLiftoff = 600000UL;
-    } // sync freq
     setRadioFreq(settings.TXfreq);
     if (settings.testMode)
     {
