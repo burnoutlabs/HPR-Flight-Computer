@@ -113,7 +113,7 @@
 #include "Bus_Mgmt.h"
 #include "Calibration.h"
 #include "Device_Mgmt.h"
-#include "Event_Logic.h"
+#include "FlightStep.h"
 #include "Infilght_Recover.h"
 #include "Rotation.h"
 #include "SD_Card.h"
@@ -148,8 +148,19 @@ IntervalTimer radioTimer;
 IntervalTimer syncTimer;
 #endif
 
-// any routines called in the main flight loop need to be as fast as possible, so checkEvents()
-// (Event_Logic.h) and writeSDflightData() (SD_Card.h) are defined "always inline" in their headers
+// any routines called in the main flight loop need to be as fast as possible, so flightStep()
+// (FlightStep.h) and writeSDflightData() (SD_Card.h) are defined "always inline" in their headers
+
+// The board I/O that the flight step's actions drive (performFlightActions() in FlightStep.h)
+struct BoardIo
+{
+  static inline __attribute__((always_inline)) void pinWrite(uint8_t pin, uint8_t level) { digitalWrite(pin, level); }
+  static inline __attribute__((always_inline)) void eepromUpdate(int address, uint8_t value) { EEPROM.update(address, value); }
+  static inline __attribute__((always_inline)) void radioTimerEnd() { radioTimer.end(); }
+  static inline __attribute__((always_inline)) void radioTimerBegin(uint32_t microseconds) { radioTimer.begin(timerBuildPkt, microseconds); }
+  static inline __attribute__((always_inline)) void syncSd() { syncSD(); }
+  static inline __attribute__((always_inline)) void println(const char *text) { Serial.println(text); }
+};
 
 
 /*!
@@ -1735,175 +1746,12 @@ void loop(void)
     }
   }
 
-  // detect liftoff
-  if (!events.liftoff && accel.z > gTrigger && !events.touchdown && !events.timeOut)
+  // liftoff detection and, in flight, the integration, rotation and event logic (FlightStep.h)
+  const FlightActions actions = flightStep();
+  performFlightActions<BoardIo>(actions);
+
+  if (actions.inFlight)
   {
-    if (settings.testMode)
-    {
-      Serial.println(' ');
-      Serial.println(F("Simulated Liftoff Detected!"));
-    }
-    // set liftoff clock times
-    fltTime.padTime = fltTime.tmClockPrev = fltTime.tmClock;
-    fltTime.liftoff = fltTime.tmClock;
-    // update events
-    events.preLiftoff = false;
-    events.liftoff = true;
-    events.inFlight = true;
-    // set radio variables
-    radio.event = Liftoff;
-    radio.alt = 0;
-    radioTimer.end();
-    radioTimer.begin(timerBuildPkt, pktInterval.inflight / pktInterval.samplesPerPkt);
-    noInterrupts();
-    buildPkt = true;
-    interrupts();
-    // set GNSS liftoff values
-    gnss.liftoff.hour = GPS.time.hour();
-    gnss.liftoff.minute = GPS.time.minute();
-    gnss.liftoff.second = GPS.time.second();
-    gnss.liftoff.mili = GPS.time.centisecond();
-    gnss.maxAlt = 0.0F;
-    // if live pyros are detected, turn on the alarm to alert the user that the system is active and may fire pyros
-    if (pyro1.contStatus || pyro2.contStatus || pyro3.contStatus || pyro4.contStatus || settings.testMode)
-    {
-      livePyroAlarm = true;
-      Serial.println("Live-pyro alarm activated");
-    }
-    // store base alt in EEPROM for inflight recovery
-    floatUnion.val = baro.baseAlt;
-    if (settings.inflightRecover != 0)
-    {
-      for (byte i = 0; i < 4; i++)
-      {
-        EEPROM.update(eeprom.baseAlt + i, floatUnion.Byte[i]);
-      }
-      EEPROM.update(eeprom.lastEvent, radio.event);
-    }
-  }
-
-  if (events.liftoff)
-  {
-
-    // capture the cycles between samples
-    if (settings.testMode)
-    {
-      cyclesBtwn++;
-    }
-
-    // set cycle timestamp
-    fltTime.dt = fltTime.tmClock - fltTime.tmClockPrev;
-    fltTime.timeCurrent += fltTime.dt;
-    fltTime.tmClockPrev = fltTime.tmClock;
-
-    // Update the moving average which greatly improves accuracy with minimal latency
-    if (highG.newSamp)
-    {
-      highGsum -= highGfilter[filterPosn];
-      highGfilter[filterPosn] = highG.z;
-      highGsum += highGfilter[filterPosn];
-      filterPosn++;
-      if (filterPosn >= sizeHighGfilter)
-      {
-        filterPosn = 0;
-        if (!filterFull)
-        {
-          filterFull = true;
-        }
-      }
-      if (!filterFull)
-      {
-        highGsmooth = highGsum / filterPosn;
-      }
-      else
-      {
-        highGsmooth = highGsum / sizeHighGfilter;
-      }
-    }
-
-    // Compute the current g-load. Use the high-G accelerometer if the IMU is pegged and a high-G accelerometer is present
-    if (abs(accel.z) < accel.ADCmax)
-    {
-      accelNow = (float)(accel.z - g) * accel.gainZ;
-    }
-    else if (sensors.highG != 0)
-    {
-      accelNow = (float)(highG.z - high1G) * highG.gainZ;
-    }
-    else
-    {
-      accelNow = (float)(accel.z - g) * accel.gainZ;
-    }
-
-    // Integrate velocity and altitude data prior to apogee
-    if (!events.apogeeFire)
-    {
-
-      // Capture the max acceleration
-      if (accelNow > maxG)
-      {
-        maxG = accelNow;
-      }
-
-      // calculate the new acceleration based velocity
-      // this makes the apogee event mach immune
-      accelVel += accelNow * (float)fltTime.dt * mlnth;
-
-      // calculate the new acceleration based altitude
-      accelAlt += accelVel * (float)fltTime.dt * mlnth;
-
-      // calculate the new sensor fusion based velocity
-      fusionVel += accelNow * (float)fltTime.dt * mlnth;
-      if (baro.newSamp && baro.Vel < 300 && baro.Vel < baro.maxVel && accelNow < 0.2F && fusionVel < 300.0F && baro.Alt < 13000)
-      {
-        fusionVel *= 0.99F;
-        fusionVel += 0.01F * baro.Vel;
-      }
-      radio.vel = (int16_t)fusionVel;
-
-      // update maximum velocity if it exceeds the previous value
-      if (fusionVel > maxVelocity)
-      {
-        maxVelocity = fusionVel;
-      }
-
-      // calculate the new sensor fusion based altitude
-      fusionAlt += fusionVel * (float)fltTime.dt * mlnth;
-      if (baro.newSamp && baro.Alt < 9000)
-      {
-        fusionAlt *= 0.95;
-        fusionAlt += 0.05 * baro.Alt;
-      }
-      if (!altOK && (fusionAlt > settings.altThreshold || settings.testMode))
-      {
-        altOK = true;
-      }
-      radio.alt = (int16_t)fusionAlt;
-
-    } // end if !apogee
-
-    // caluclate the partial rotation in millionths of a degree, maintaining integer math for speed and retaining all possible precision
-    dx += gyro.x * fltTime.dt;
-    dy += gyro.y * fltTime.dt;
-    dz += gyro.z * fltTime.dt;
-
-    // if active stablization is on, then use the more stable rotation algorithm (Rotation.cpp)
-    if (settings.stableRotn || settings.stableVert)
-    {
-      getDCM2DRotn(dx, dy, dz, gyro.gainZ);
-      dx = dy = dz = 0L;
-    }
-
-    // else update the quaternion rotation if we are not using active stabilization(Rotation.cpp)
-    else if (fltTime.timeCurrent - lastRotn > rotnRate)
-    {
-      getQuatRotn(dx, dy, dz, gyro.gainZ);
-      dx = dy = dz = 0L;
-      lastRotn = fltTime.timeCurrent;
-    }
-
-    // run event logic (Event_Logic.h)
-    checkEvents();
 
     // update the canards throws if stabilization or flyback is enabled (Rotation.cpp)
     if (settings.stableRotn || settings.stableVert || settings.flyBack)
@@ -2598,100 +2446,6 @@ void checkPyroContinuity()
   } // end if liftoff
 } // end check continuity
 
-void firePyros(char event)
-{
-  pyroFire = true;
-  if (pyro1.func == event)
-  {
-    pins.firePin = pyro1.firePin;
-    digitalWrite(pyro1.firePin, HIGH);
-    pyro1.fireStatus = true;
-    pyro1.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro2.func == event)
-  {
-    pins.firePin = pyro2.firePin;
-    digitalWrite(pyro2.firePin, HIGH);
-    pyro2.fireStatus = true;
-    pyro2.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro3.func == event)
-  {
-    pins.firePin = pyro3.firePin;
-    digitalWrite(pyro3.firePin, HIGH);
-    pyro3.fireStatus = true;
-    pyro3.fireStart = fltTime.timeCurrent;
-  }
-  if (pyro4.func == event)
-  {
-    pins.firePin = pyro4.firePin;
-    digitalWrite(pyro4.firePin, HIGH);
-    pyro4.fireStatus = true;
-    pyro4.fireStart = fltTime.timeCurrent;
-  }
-}
-
-void pulsePyro()
-{
-  static boolean pyro1fire = false;
-  static boolean pyro2fire = false;
-  static boolean pyro3fire = false;
-  static boolean pyro4fire = false;
-
-  if (pyro1.fireStatus)
-  {
-    if (pyro1fire)
-    {
-      digitalWrite(pyro1.firePin, LOW);
-      pyro1fire = false;
-    }
-    else
-    {
-      digitalWrite(pyro1.firePin, HIGH);
-      pyro1fire = true;
-    }
-  }
-  if (pyro2.fireStatus)
-  {
-    if (pyro2fire)
-    {
-      digitalWrite(pyro2.firePin, LOW);
-      pyro2fire = false;
-    }
-    else
-    {
-      digitalWrite(pyro2.firePin, HIGH);
-      pyro2fire = true;
-    }
-  }
-  if (pyro3.fireStatus)
-  {
-    if (pyro3fire)
-    {
-      digitalWrite(pyro3.firePin, LOW);
-      pyro3fire = false;
-    }
-    else
-    {
-      digitalWrite(pyro3.firePin, HIGH);
-      pyro3fire = true;
-    }
-  }
-  if (pyro4.fireStatus)
-  {
-    if (pyro4fire)
-    {
-      digitalWrite(pyro4.firePin, LOW);
-      pyro4fire = false;
-    }
-    else
-    {
-      digitalWrite(pyro4.firePin, HIGH);
-      pyro4fire = true;
-    }
-  }
-}
-
 void readEEPROMsettings()
 {
 
@@ -2778,115 +2532,6 @@ void readEEPROMsettings()
   settings.maxAngle = intUnion.val;
   settings.stableRotn = (bool)EEPROM.read(eeprom.stableRotn);
   settings.stableVert = (bool)EEPROM.read(eeprom.stableVert);
-}
-
-void processBaroSamp()
-{
-
-  //----------------------------
-  // process preliftoff variables
-  //----------------------------
-  static float sumBaseAlt = 0.0F;
-  static uint8_t baseAltPosn = 0;
-  static float baseAltBuff[30] = {0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
-                                  0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F,
-                                  0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F};
-  if (events.preLiftoff || events.touchdown || events.timeOut)
-  {
-    sumBaseAlt -= baseAltBuff[baseAltPosn];
-    sumBaseAlt += baro.rawAlt;
-    baseAltBuff[baseAltPosn] = baro.rawAlt;
-    baseAltPosn++;
-    const uint8_t sizeBaseAltBuff = sizeof(baseAltBuff) / sizeof(baseAltBuff[0]);
-    if (baseAltPosn >= sizeBaseAltBuff)
-    {
-      baseAltPosn = 0;
-    }
-    baro.baseAlt = sumBaseAlt / sizeBaseAltBuff;
-    radio.baseAlt = (int16_t)baro.baseAlt;
-    baro.newSamp = false;
-  }
-
-  //--------------------------
-  // Update in-flight variables
-  //--------------------------
-  baro.Alt = baro.rawAlt - baro.baseAlt;
-  // update the maximum altitude reporting variable
-  if (baro.Alt > baro.maxAlt && !events.apogee)
-  {
-    baro.maxAlt = baro.Alt;
-  }
-
-  //----------------------------
-  // Smoothed barometric altitude
-  //----------------------------
-  static float rawAltSum = 0.0;
-  static float rawAltBuff[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  static byte rawAltPosn = 0;
-  // Update the rolling sum
-  rawAltSum -= rawAltBuff[rawAltPosn];
-  rawAltBuff[rawAltPosn] = baro.Alt;
-  rawAltSum += rawAltBuff[rawAltPosn];
-  // update the position counter
-  rawAltPosn++;
-  static const float sizeRawAltBuff = sizeof(rawAltBuff) / sizeof(rawAltBuff[0]);
-  if (rawAltPosn >= (byte)sizeRawAltBuff)
-  {
-    rawAltPosn = 0;
-  }
-  // calculate the smoothed barometric altitude
-  baro.smoothAlt = rawAltSum / sizeRawAltBuff;
-
-  //---------------------------
-  // barometric derived velocity
-  //---------------------------
-  static uint8_t altAvgPosn = 0;
-  static int16_t baroVelPosn = 0;
-  static float altAvgBuff[30] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-  static unsigned long baroTimeBuff[30] = {0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL,
-                                           0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL,
-                                           0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL};
-  // if we are past apogee, use the maximum difference between samples in the buffer, otherwise set the difference to 10 samples
-  if (events.apogee)
-  {
-    baroVelPosn = altAvgPosn;
-  }
-  else
-  {
-    baroVelPosn = altAvgPosn - 10;
-    if (baroVelPosn < 0)
-    {
-      baroVelPosn = (int)((sizeof(altAvgBuff) / sizeof(altAvgBuff[0])) - (10 - altAvgPosn));
-    }
-  }
-  // calculate the barometric derived velocity from the moving averages
-  baro.Vel = (baro.smoothAlt - altAvgBuff[baroVelPosn]) / ((float)(baro.timeLastSamp - baroTimeBuff[baroVelPosn]) * mlnth);
-  // update variables
-  if (baro.Vel > baro.maxVel)
-  {
-    baro.maxVel = baro.Vel;
-  }
-  radio.vel = baro.Vel;
-  radio.alt = baro.smoothAlt;
-  altAvgBuff[altAvgPosn] = baro.smoothAlt;
-  baroTimeBuff[altAvgPosn] = baro.timeLastSamp;
-  altAvgPosn++;
-  if (altAvgPosn >= (byte)(sizeof(altAvgBuff) / sizeof(altAvgBuff[0])))
-  {
-    altAvgPosn = 0;
-  }
-  if (events.apogeeFire || settings.testMode)
-  {
-    fusionVel = baro.Vel;
-    fusionAlt = baro.smoothAlt;
-  }
-
-  //----------------------------
-  // Barometric touchdown trigger
-  //----------------------------
-  (events.mainDeploy && fabs(baro.Vel) < 1.0F) ? baroTouchdown++ : baroTouchdown = 0;
 }
 
 void clearIRQ() { clearTX = true; }

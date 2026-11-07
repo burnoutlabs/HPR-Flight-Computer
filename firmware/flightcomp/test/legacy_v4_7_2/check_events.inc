@@ -1,39 +1,3 @@
-/**
- * @file Event_Logic.h
- * @brief Main event logic for rocket control. Manages the firing of pyros and
- * event handling during the flight.
- * 
- * This logic is modular to facilitate maintenance and is the central control point
- * for the rocket's operations during its various flight stages.
- * 
- * Apogee is detected by any of three methods once booster burnout is confirmed and the
- * false-liftoff check has ended: accelerometer-integrated velocity, barometric velocity
- * (below 9000m, Mach-proofed by the accelerometer velocity), or sensor fusion.
- * 
- * @remark Change log:
- * - 17 JUL 21: Initial breakout created
- */
-#pragma once
-
-#include <Arduino.h>
-#include <EEPROM.h>
-
-#include "declarations.h"
-#include "board.h"
-#include "flightcomp.h"
-#include "SD_Card.h"
-
-// checkEvents() runs on every pass of the flight loop, so it is defined here, always inline,
-// for loop() in flightcomp.cpp to inline it.
-
-
-/**
- * @brief Check and manage rocket events during the flight.
- * 
- * This function manages the rocket's key events, including timeouts, false liftoff checks, 
- * booster burnout, stage separations, and parachute deployments. It also handles touch down 
- * detection and pyrotechnic control.
- */
 inline __attribute__((always_inline)) void checkEvents()
 {
 

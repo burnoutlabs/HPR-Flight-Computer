@@ -9,6 +9,7 @@
 #include "Infilght_Recover.h"
 #include "declarations.h"
 #include "flightcomp.h"
+#include "FlightStep.h"
 #include "Bus_Mgmt.h"
 #include "Calibration.h"
 #include "SD_Card.h"
