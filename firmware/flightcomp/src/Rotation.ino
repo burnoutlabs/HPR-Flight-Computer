@@ -17,6 +17,21 @@
  * - 11 MAY 24: Updated for the Teensy 4.0/4.1 FPU at 64-bit precision.
  */
 
+// getQuatRotn() state, at file scope rather than as function-local statics so that
+// the host tests can reset it between cases. Rotation (Quat) and roll-unwrapping
+// holders; the types differ between the double and float paths as before.
+#if defined(__IMXRT1062__)
+static double Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
+static double prevRollZ = 0;
+static double quatRollZ = 0;
+static double fullRollZ = 0;
+#else
+static float Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
+static long prevRollZ = 0;
+static long quatRollZ = 0;
+static long fullRollZ = 0;
+#endif
+
 /**
  * @brief Calculate quaternion rotation at 100Hz using only gyroscope data.
  *
@@ -33,18 +48,12 @@ void getQuatRotn(double dx, double dy, double dz, double gyroGain)
 {
 
   // Local Vectors
-  static double Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
   double QuatDiff[5];
   double Rotn1[4];
   double Rotn2[4];
   double Rotn3[4];
   double quatLen;
   double a, b, c, d, a2, b2, c2, d2, ab, ac, ad, bc, bd, cd;
-
-  // Local rotation holders
-  static double prevRollZ = 0;
-  static double quatRollZ = 0;
-  static double fullRollZ = 0;
 
   const double rotn2rad = gyroGain * DEG_TO_RAD / 1000000; // divide by 1000000 since dx,dy,dz are millionths of a degree
 
@@ -53,18 +62,12 @@ void getQuatRotn(double dx, double dy, double dz, double gyroGain)
 void getQuatRotn(float dx, float dy, float dz, float gyroGain)
 {
   // Local Vectors
-  static float Quat[5] = {0.0, 1.0, 0.0, 0.0, 0.0};
   float QuatDiff[5];
   float Rotn1[4];
   float Rotn2[4];
   float Rotn3[4];
   float quatLen;
   float a, b, c, d, a2, b2, c2, d2, ab, ac, ad, bc, bd, cd;
-
-  // Local rotation holders
-  static long prevRollZ = 0;
-  static long quatRollZ = 0;
-  static long fullRollZ = 0;
 
   const float rotn2rad = gyroGain * DEG_TO_RAD / 1000000; // divide by 1000000 since dx,dy,dz are millionths of a degree
 
@@ -160,6 +163,11 @@ void getQuatRotn(float dx, float dy, float dz, float gyroGain)
 float cosZ = 1.0F;
 float sinZ = 0.0F;
 
+// getDCM2DRotn() state, at file scope so that the host tests can reset it
+static float rawX = 0.0F;
+static float rawY = 0.0F;
+static float rawZ = 0.0F;
+
 /**
  * @brief Optimized DCM code to calculate the rotation on each cycle of the loop.
  * @param dx Gyroscope data along the X-axis.
@@ -174,10 +182,6 @@ void getDCM2DRotn(long dx, long dy, long dz, float gyroGain)
   // rigorous testing shows a typical difference of 2-3 degrees (maximum) between this method and quaternions
   // this simplified algorithm can be employed on modest processors since it uses minimal floating point operations and simplified trigonometry
   // it has been successfully deployed on the Arduino Uno and Adafruit Metro Mini
-
-  static float rawX = 0.0F;
-  static float rawY = 0.0F;
-  static float rawZ = 0.0F;
 
   // Calculate new Z angle from gyro data
   rawZ += dz;

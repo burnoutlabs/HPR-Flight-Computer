@@ -69,17 +69,43 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Flight computer unit tests, compiled and run on the host (the `native` env)
+  host-tests:
+    name: flightcomp / host tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-native-${{ env.PLATFORMIO_VERSION }}-${{ hashFiles('firmware/flightcomp/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: python -m pip install "platformio==${PLATFORMIO_VERSION}"
+
+      - name: Test
+        run: pio test -e native -d firmware/flightcomp
+
   # A single check to mark as required on master, so adding or removing an
-  # env does not mean editing branch protection.
+  # env or a test job does not mean editing branch protection.
   all-builds:
     name: all builds
     if: always()
-    needs: firmware
+    needs: [firmware, host-tests]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require every firmware build to pass
+      - name: Require every firmware build and the host tests to pass
         env:
-          RESULT: ${{ needs.firmware.result }}
+          FIRMWARE: ${{ needs.firmware.result }}
+          HOST_TESTS: ${{ needs.host-tests.result }}
         run: |
-          echo "firmware matrix result: ${RESULT}"
-          test "${RESULT}" = success
+          echo "firmware matrix result: ${FIRMWARE}"
+          echo "host tests result: ${HOST_TESTS}"
+          test "${FIRMWARE}" = success
+          test "${HOST_TESTS}" = success

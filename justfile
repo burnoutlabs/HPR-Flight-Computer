@@ -14,8 +14,8 @@ default:
 build:
     for p in {{ projects }}; do {{ pio }} run -d "$p"; done
 
-[doc("CI equivalent: build every env; changes no tracked file")]
-check: build
+[doc("CI equivalent: build every env and run the host tests; changes no tracked file")]
+check: build test
 
 [doc("Format the firmware sources in place with clang-format")]
 fmt:
@@ -25,6 +25,6 @@ fmt:
 fmt-check:
     rc=0; for f in firmware/*/src/*.ino firmware/*/src/*.h; do clang-format --dry-run --Werror --assume-filename=x.cpp "$f" || rc=1; done; exit $rc
 
-[doc("No tests yet: the host test harness comes with #19")]
+[doc("Run the flight computer's host unit tests (PlatformIO native env)")]
 test:
-    @echo "No tests yet: the host test harness comes with #19."
+    {{ pio }} test -e native -d firmware/flightcomp
