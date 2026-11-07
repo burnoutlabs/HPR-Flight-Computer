@@ -20,6 +20,12 @@
  * - bool burstWrite(byte reg, uint8_t *data, byte len): Writes multiple bytes of data to consecutive registers.
  */
 
+#include <Arduino.h>
+#include <SPI.h>
+
+#include "declarations.h"
+#include "Radio.h"
+
 //---------------------------
 // 433 MHz Frequency List
 //---------------------------

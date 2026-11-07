@@ -1,4 +1,19 @@
+#include <Arduino.h>
 
+#include "declarations.h"
+#include "SD_Card.h"
+
+// CSV line buffer and write position, defined beside the writers that fill them
+alignas(4) char dataString[512];
+int strPosn = 0;
+
+// SdFat software SPI template
+SoftSpiDriver<SOFT_MISO_PIN, SOFT_MOSI_PIN, SOFT_SCK_PIN> softSpi;
+
+SdFs SD;
+FsFile sustainerFile;
+FsFile boosterFile;
+FsFile settingsFile;
 
 void readRadioSettingsSD()
 {
